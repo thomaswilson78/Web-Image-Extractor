@@ -1,14 +1,13 @@
+#!/usr/bin/env python -u
+
 import os
 import sys
 import re
-import asyncio
-from colorama import Fore, Style
-
+import asyncclick as click
 import pcloud
-import accounts
-
 import twscrape
 import pixivpy3
+from colorama import Fore, Style
 
 if sys.platform == "linux":
     sys.path.append(os.path.expanduser("~/pCloudDrive/repos/DanbooruAPI/"))
@@ -21,32 +20,40 @@ pixiv_api = pixivpy3.AppPixivAPI()
 twt_api = twscrape.API()
 
 
-def display_man():
-    #  one day my lazy butt will make this, but that day is not today
-    return
+@click.group()
+def commands():
+    pass
 
 
-def get_input_file():
-    file = ""
-    try:
-        file = sys.argv[1]
-    except:
-        raise Exception("File not provided.")
+@click.command()
+@click.option("--username", required=True, prompt="Twitter Username",
+              help="Username for the Twitter account. Will be prompted if not provided.")
+@click.option("--password", required=True, prompt="Twitter Password", hide_input=True,
+              help="Password for the Twitter account. Will be prompted if not provided.")
+@click.option("--email", required=True, prompt="Twitter Email",
+              help="Email associated with the Twitter account. Will be prompted if not provided.")
+@click.option("--emailpassword", required=True, prompt="Email Password", hide_input=True,
+              help="Password associated with the email account. Will be prompted if not provided.")
+async def add_twitter_account(username, password, email, emailpassword):
+    """Add a Twitter account to the list of accounts used in scraping data off the website."""
+    await twt_api.pool.add_account(username, password, email, emailpassword)
 
-    if not os.path.isfile(file):
-        raise Exception("File does not exist.")
 
+@click.command()
+@click.option("--username", required=True, prompt="Twitter Username")
+async def remove_twitter_account(username):
+    """Removes Twitter account from list of available accounts."""
+    await twt_api.pool.delete_accounts(username)
+
+
+# Pull the website and associated ID with post
+def extract_ids(file):
     extension = os.path.splitext(file)[1]
     if not extension == ".txt":
         raise Exception("Incorrect file format.")
 
-    return file
-
-
-# Pull the website and associated ID with post
-def extract_ids():
     id_list = []
-    f = open(get_input_file())
+    f = open(file)
     lines = f.readlines()
 
     if not any(lines):
@@ -61,17 +68,17 @@ def extract_ids():
 
         match split_url[0]:
             case "twitter.com":
-                # tweet_id is always in 3rd slot: twitter.com/{account}/status/{tweet_id}
+                # id is always in 3rd slot: twitter.com/{account}/status/{tweet_id}
                 id_list.append((split_url[0], split_url[1], split_url[3]))
-
             case "pixiv.net":
-                id_list.append((split_url[0], "", split_url[3])) # tweet_id is in 3rd slot: pixiv.net/{lang}/artworks/{illustration_id}
+                id_list.append((split_url[0], "", split_url[3])) # id is always in 3rd slot: pixiv.net/{lang}/artworks/{illustration_id}
             case "danbooru.donmai.us":
-                post_id = split_url[2]
+                post_id = split_url[2] # id is always in 2nd slot: danbooru.donmai.us/post/{post_id}
+                # Ensure that if any parameters were in the url that they're removed.
                 index = post_id.find("?")
                 if index > 0:
                     post_id = post_id[:index]
-                id_list.append((split_url[0], post_id)) # tweet_id is in 3rd slot: pixiv.net/{lang}/artworks/{illustration_id}
+                id_list.append((split_url[0], post_id)) 
             case _:
                 print(f"{Fore.YELLOW}Unable to pull ID, {split_url[0]} is not a valid website.{Style.RESET_ALL}")
                 continue
@@ -80,12 +87,12 @@ def extract_ids():
 
 
 def fav_danbooru(site, img_id):
-    dan_found = 0
+    dan_found = False
 
     if site == "danbooru.donmai.us":
         danbooruapi.API.add_favorite(img_id)
         print(f"Favorited {img_id}.")
-        dan_found = 1
+        dan_found = True
     else:
         params = {"tags": f"source:*{site}*{img_id}"}
         json_data = danbooruapi.API.get_posts(params)
@@ -121,38 +128,40 @@ async def extract_images(site, img_id):
             raise Exception(f"{img_id}:{site} not handled.")
 
 
-async def main():
-    # Disable saving favorites to Danbooru, only save to pCloud
-    disable_dan = 1 if "-dd" in sys.argv else 0
-    # Disable saving favorites to Danbooru, only save to pCloud
-    disable_saving = 1 if "-ds" in sys.argv else 0
-    # Save even if found on Danbooru
-    force_save = 1 if "-f" in sys.argv else 0
-    # If artist is part of a collection, save as well
-    save_collection = 1 if "-c" in sys.argv else 0
+@click.command()
+@click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.option("-ns", "--nosaving", is_flag=True, default=False, 
+              help="Disables saving, only adds to favorites.")
+@click.option("-nd", "--nodanbooru", is_flag=True, default=False, 
+              help="Disables favoriting image to Danbooru, only saves.")
+@click.option("-f", "--force", is_flag=True, default=False, 
+              help="Forces all images to save regardless if found on Danbooru.")
+@click.option("-c", "--collection", is_flag=True, default=False, 
+              help="If artist is part of a collection, save image.")
+async def extract(file, nosaving, nodanbooru, force, collection):
+    """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
+    if not any(await twt_api.pool.get_all()):
+        print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
+        exit()
 
-    await accounts.add_twitter_accounts()
     await twt_api.pool.login_all()
     # I'm not sure how good this token is, I think it has to be refreshed every
     # hour. I may just scrap this if it becomes a major hurdle, especially
     # since it's a bit of a pain to extract a valid token.
     pixiv_api.set_auth(os.getenv("PIXIV_TOKEN"))
 
-    for site, artist, img_id in extract_ids():
+    for site, artist, img_id in extract_ids(file):
         try:
             dan_found = 0
-            if not disable_dan:
+            if not nodanbooru:
                 dan_found = fav_danbooru(site, img_id)
                 # Force saving if artist part of a collection
-                if dan_found and save_collection:
+                if dan_found and collection:
                     if artist in pcloud.artist_directories:
-                        dan_found = 0 
+                        dan_found = False 
                     
-            # might try to incorporate the saucenao API but that's a bit iffy,
-            # especially when even they admit their API sucks
-
-            if not dan_found or force_save:
-                if not disable_saving:
+            if not dan_found or force:
+                if not nosaving:
                     await extract_images(site, img_id)
                 else:
                     print(f"{Fore.YELLOW}Saving disabled, {img_id} skipped.{Style.RESET_ALL}")
@@ -162,5 +171,9 @@ async def main():
     print("Extraction complete. See output for any errors.")
 
 
+commands.add_command(extract)
+commands.add_command(add_twitter_account)
+commands.add_command(remove_twitter_account)
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    commands()
