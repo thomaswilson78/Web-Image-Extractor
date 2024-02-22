@@ -68,9 +68,16 @@ def extract_ids(file):
 
         match split_url[0]:
             case "twitter.com":
+                # Make sure the URL is to a status, not to home, search, etc.
+                if new_line.find("/status/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {new_line}{Style.RESET_ALL}")
+                    continue
                 # id is always in 3rd slot: twitter.com/{account}/status/{tweet_id}
                 id_list.append((split_url[0], split_url[1], split_url[3]))
             case "pixiv.net":
+                # Make sure the URL is to the image
+                if new_line.find("/artworks/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {new_line}{Style.RESET_ALL}")
                 id_list.append((split_url[0], "", split_url[3])) # id is always in 3rd slot: pixiv.net/{lang}/artworks/{illustration_id}
             case "danbooru.donmai.us":
                 post_id = split_url[2] # id is always in 2nd slot: danbooru.donmai.us/post/{post_id}
