@@ -2,8 +2,7 @@
 
 import os
 import sys
-import re
-import asyncclick as click
+import urllib.parse as urlparse
 import pcloud
 import twscrape
 import pixivpy3
@@ -19,81 +18,55 @@ import danbooruapi
 pixiv_api = pixivpy3.AppPixivAPI()
 twt_api = twscrape.API()
 
-
-@click.group()
-def commands():
-    pass
-
-
-@click.command()
-@click.option("--username", required=True, prompt="Twitter Username",
-              help="Username for the Twitter account. Will be prompted if not provided.")
-@click.option("--password", required=True, prompt="Twitter Password", hide_input=True,
-              help="Password for the Twitter account. Will be prompted if not provided.")
-@click.option("--email", required=True, prompt="Twitter Email",
-              help="Email associated with the Twitter account. Will be prompted if not provided.")
-@click.option("--emailpassword", required=True, prompt="Email Password", hide_input=True,
-              help="Password associated with the email account. Will be prompted if not provided.")
-async def add_twitter_account(username, password, email, emailpassword):
-    """Add a Twitter account to the list of accounts used in scraping data off the website."""
-    await twt_api.pool.add_account(username, password, email, emailpassword)
-
-
-@click.command()
-@click.option("--username", required=True, prompt="Twitter Username")
-async def remove_twitter_account(username):
-    """Removes Twitter account from list of available accounts."""
-    await twt_api.pool.delete_accounts(username)
-
-
 # Pull the website and associated ID with post
-def extract_ids(file):
+def __extract_ids(file):
     extension = os.path.splitext(file)[1]
     if not extension == ".txt":
         raise Exception("Incorrect file format.")
 
-    id_list = []
-    f = open(file)
-    lines = f.readlines()
+    lines = open(file).readlines()
 
     if not any(lines):
         raise Exception("Empty file.")
 
     lines = [li.replace("\n", "") for li in lines]
 
+    id_list = []
     for line in lines:
-        new_line = re.sub(".*http.*://", "", line)
-        new_line = re.sub("www.", "", new_line)
-        split_url = new_line.split("/")
+        url = urlparse.urlparse(line)
+        # NOTE: path starts with "/" so you'll need to account for an extra item in the list
+        split_path = url.path.split("/")
 
-        match split_url[0]:
+        match url.hostname:
             case "twitter.com":
                 # Make sure the URL is to a status, not to home, search, etc.
-                if new_line.find("/status/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {new_line}{Style.RESET_ALL}")
+                if url.path.find("/status/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
                     continue
-                # id is always in 3rd slot: twitter.com/{account}/status/{tweet_id}
-                id_list.append((split_url[0], split_url[1], split_url[3]))
+                # account @ 1, id @ 3: /{account}/status/{tweet_id}
+                id_list.append((url.hostname, split_path[1], split_path[3]))
             case "pixiv.net":
                 # Make sure the URL is to the image
-                if new_line.find("/artworks/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {new_line}{Style.RESET_ALL}")
-                id_list.append((split_url[0], "", split_url[3])) # id is always in 3rd slot: pixiv.net/{lang}/artworks/{illustration_id}
+                if url.path.find("/artworks/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
+                # id @ 3: /{lang}/artworks/{illustration_id}
+                id_list.append((url.hostname, "", split_path[3])) 
             case "danbooru.donmai.us":
-                post_id = split_url[2] # id is always in 2nd slot: danbooru.donmai.us/post/{post_id}
+                # id @ 2: /post/{post_id}
+                post_id = split_path[2]
                 # Ensure that if any parameters were in the url that they're removed.
                 index = post_id.find("?")
                 if index > 0:
                     post_id = post_id[:index]
-                id_list.append((split_url[0], post_id)) 
+                id_list.append((url.hostname, "", post_id)) 
             case _:
-                print(f"{Fore.YELLOW}Unable to pull ID, {split_url[0]} is not a valid website.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Unable to pull ID, {url.hostname} is not supported.{Style.RESET_ALL}")
                 continue
 
     return id_list
 
 
-def fav_danbooru(site, img_id):
+def __fav_danbooru(site, img_id):
     dan_found = False
 
     if site == "danbooru.donmai.us":
@@ -114,7 +87,7 @@ def fav_danbooru(site, img_id):
     return dan_found
 
 
-async def extract_images(site, img_id):
+async def __extract_images(site, img_id):
     match site:
         case "twitter.com":
             tw_response = await twt_api.tweet_details(int(img_id))
@@ -123,6 +96,10 @@ async def extract_images(site, img_id):
                 url = image.url + "?name=4096x4096"
                 filename = image.url[image.url.rfind('/') + 1:]
                 pcloud.save_pcloud(img_id, tw_response.user.username, url, filename)
+            # Would like a way to extract videos as well, but need to sit on this
+            # for video in tw_response.media.videos:
+            #     for variant in video.variants
+            #         variant.url
         case "pixiv.net":
             return
             # I'll try to figure this out later, not sure how to handle
@@ -135,18 +112,7 @@ async def extract_images(site, img_id):
             raise Exception(f"{img_id}:{site} not handled.")
 
 
-@click.command()
-@click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.option("-ns", "--nosaving", is_flag=True, default=False, 
-              help="Disables saving, only adds to favorites.")
-@click.option("-nd", "--nodanbooru", is_flag=True, default=False, 
-              help="Disables favoriting image to Danbooru, only saves.")
-@click.option("-f", "--force", is_flag=True, default=False, 
-              help="Forces all images to save regardless if found on Danbooru.")
-@click.option("-c", "--collection", is_flag=True, default=False, 
-              help="If artist is part of a collection, save image.")
 async def extract(file, nosaving, nodanbooru, force, collection):
-    """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
     if not any(await twt_api.pool.get_all()):
         print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
         exit()
@@ -157,11 +123,12 @@ async def extract(file, nosaving, nodanbooru, force, collection):
     # since it's a bit of a pain to extract a valid token.
     pixiv_api.set_auth(os.getenv("PIXIV_TOKEN"))
 
-    for site, artist, img_id in extract_ids(file):
+    errors_encountered = False
+    for site, artist, img_id in __extract_ids(file):
         try:
             dan_found = 0
             if not nodanbooru:
-                dan_found = fav_danbooru(site, img_id)
+                dan_found = __fav_danbooru(site, img_id)
                 # Force saving if artist part of a collection
                 if dan_found and collection:
                     if artist in pcloud.artist_directories:
@@ -169,18 +136,16 @@ async def extract(file, nosaving, nodanbooru, force, collection):
                     
             if not dan_found or force:
                 if not nosaving:
-                    await extract_images(site, img_id)
+                    await __extract_images(site, img_id)
                 else:
                     print(f"{Fore.YELLOW}Saving disabled, {img_id} skipped.{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
+            errors_encountered
 
-    print("Extraction complete. See output for any errors.")
-
-
-commands.add_command(extract)
-commands.add_command(add_twitter_account)
-commands.add_command(remove_twitter_account)
-
-if __name__ == "__main__":
-    commands()
+    # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
+    if errors_encountered:
+        print("Extraction complete. See output for errors.")
+    else:
+        print("Extraction complete. No issues encountered, removing file.")
+        os.remove(file)
