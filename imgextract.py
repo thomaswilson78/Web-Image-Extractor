@@ -13,10 +13,11 @@ if sys.platform == "linux":
 elif sys.platform == "win32":
     sys.path.append("P:/repos/DanbooruAPI")
 
-import danbooruapi
+import danbooru
 
 pixiv_api = pixivpy3.AppPixivAPI()
 twt_api = twscrape.API()
+dan_api = danbooru.API()
 
 # Pull the website and associated ID with post
 def __extract_ids(file):
@@ -70,18 +71,18 @@ def __fav_danbooru(site, img_id):
     dan_found = False
 
     if site == "danbooru.donmai.us":
-        danbooruapi.API.add_favorite(img_id)
+        dan_api.add_favorite(img_id)
         print(f"Favorited {img_id}.")
         dan_found = True
     else:
         params = {"tags": f"source:*{site}*{img_id}"}
-        json_data = danbooruapi.API.get_posts(params)
+        json_data = dan_api.get_posts(params)
 
         dan_found = any(json_data)
         
         if dan_found:
             for item in json_data:
-                danbooruapi.API.add_favorite(item["id"])
+                dan_api.add_favorite(item["id"])
                 print(f"Favorited {img_id} to post {item['id']}.")
 
     return dan_found
