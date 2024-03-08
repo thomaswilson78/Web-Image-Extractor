@@ -2,6 +2,7 @@
 
 import os
 import sys
+import re
 import urllib.parse as urlparse
 import pcloud
 import twscrape
@@ -30,7 +31,7 @@ def __extract_ids(file):
     if not any(lines):
         raise Exception("Empty file.")
 
-    lines = [li.replace("\n", "") for li in lines]
+    lines = [re.sub("^\d+\. ", "", li).replace("\n","") for li in lines]
 
     id_list = []
     for line in lines:
@@ -142,7 +143,7 @@ async def extract(file, nosaving, nodanbooru, force, collection):
                     print(f"{Fore.YELLOW}Saving disabled, {img_id} skipped.{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
-            errors_encountered
+            errors_encountered = True
 
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
     if errors_encountered:
