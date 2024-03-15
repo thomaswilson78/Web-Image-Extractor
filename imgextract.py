@@ -128,6 +128,9 @@ async def extract(file, nosaving, nodanbooru, force, collection):
     errors_encountered = False
     for site, artist, img_id in __extract_ids(file):
         try:
+            if pcloud.file_exists(artist, img_id):
+                continue
+
             dan_found = 0
             if not nodanbooru:
                 dan_found = __fav_danbooru(site, img_id)
