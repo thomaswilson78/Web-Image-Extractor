@@ -16,11 +16,11 @@ __artist_path = __pcloud_path + "Images/Other/Artist Collections/"
 __ai_art_path = __pcloud_path + "Images/Other/AI Art/_Collections/"
 
 
-def get_file_list():
+def get_file_list() -> dict[str:str]:
     """Pulls all files that use the extraction naming convention -> {uploader/artist} - {location/status} - {image_id}"""
-    all_files = [f for _, _, files in os.walk(__pcloud_path+"Images") for f in files]
-    filtered_files:list[str] = list(filter(lambda f: re.match(".+ - \d+ - ", f), all_files))
-    return set(f"{f.split(' - ')[0]} - {f.split(' - ')[1]}" for f in filtered_files)
+    all_files = [f"{dir}/{f}" for dir, _, files in os.walk(__pcloud_path+"Images") for f in files]
+    filtered_files:list[str] = list(filter(lambda f: re.match("/.+ - \d+ - ", f), all_files))
+    return {f"{os.path.basename(f.split(' - ')[0])} - {f.split(' - ')[1]}":f for f in filtered_files}
 
 __file_list = get_file_list()
 
@@ -28,9 +28,10 @@ __file_list = get_file_list()
 def file_exists(artist,id):
     """Checks to ensure no repeat files in the entire image folder."""
     # This method is way more accurate and faster. This way we check ALL directories, not just the one being saved to.
-    exists = f"{artist} - {id}" in __file_list 
+    file = f"{artist} - {id}"
+    exists =  file in __file_list 
     if exists:
-        print(f"{Fore.YELLOW}{artist} - {id} already exists.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{__file_list[file]} already exists.{Style.RESET_ALL}")
     return exists
 
 
