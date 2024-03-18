@@ -61,5 +61,5 @@ def save_pcloud(img_id, artist, url, filename):
 
     filepath = path + artist + " - " + str(img_id) + " - " + filename
     urllib.request.urlretrieve(url, filepath)
-    __file_list.add(f"{artist} - {img_id}")
+    __file_list[f"{artist} - {img_id}"] = filepath
     print(str(img_id) + " saved to " + filepath)
