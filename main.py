@@ -45,10 +45,17 @@ async def remove_twitter_account(username):
               help="If artist is part of a collection, save image.")
 async def extract(file, nosaving, nodanbooru, force, collection):
     """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
-    await imgextract.extract(file, nosaving, nodanbooru, force, collection)
+    await imgextract.extract_from_file(file, nosaving, nodanbooru, force, collection)
+
+
+@click.command()
+@click.argument("url")
+async def extract_url(url:str):
+    await imgextract.extract_from_url(url)
 
 
 commands.add_command(extract)
+commands.add_command(extract_url)
 commands.add_command(add_twitter_account)
 commands.add_command(remove_twitter_account)
 

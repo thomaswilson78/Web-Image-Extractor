@@ -21,7 +21,7 @@ twt_api = twscrape.API()
 dan_api = danbooru.API()
 
 # Pull the website and associated ID with post
-def __extract_ids(file):
+def __extract_data_from_file(file):
     extension = os.path.splitext(file)[1]
     if not extension == ".txt":
         raise Exception("Incorrect file format.")
@@ -30,10 +30,13 @@ def __extract_ids(file):
 
     if not any(lines):
         raise Exception("Empty file.")
-
+    
     lines = [re.sub("^\d+\. ", "", li).replace("\n","") for li in lines]
 
-    id_list = []
+    return __extract_urls(lines)
+
+def __extract_urls(lines:list[str]):
+    img_data = []
     for line in lines:
         url = urlparse.urlparse(line)
         # NOTE: path starts with "/" so you'll need to account for an extra item in the list
@@ -46,13 +49,13 @@ def __extract_ids(file):
                     print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
                     continue
                 # account @ 1, id @ 3: /{account}/status/{tweet_id}
-                id_list.append((url.hostname, split_path[1], split_path[3]))
+                img_data.append((url.hostname, split_path[1], split_path[3]))
             case "pixiv.net":
                 # Make sure the URL is to the image
                 if url.path.find("/artworks/") < 0:
                     print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
                 # id @ 3: /{lang}/artworks/{illustration_id}
-                id_list.append((url.hostname, "", split_path[3])) 
+                img_data.append((url.hostname, "", split_path[3])) 
             case "danbooru.donmai.us":
                 # id @ 2: /post/{post_id}
                 post_id = split_path[2]
@@ -60,12 +63,12 @@ def __extract_ids(file):
                 index = post_id.find("?")
                 if index > 0:
                     post_id = post_id[:index]
-                id_list.append((url.hostname, "", post_id)) 
+                img_data.append((url.hostname, "", post_id)) 
             case _:
                 print(f"{Fore.YELLOW}Unable to pull ID, {url.hostname} is not supported.{Style.RESET_ALL}")
                 continue
 
-    return id_list
+    return img_data
 
 
 def __fav_danbooru(site, img_id):
@@ -114,7 +117,27 @@ async def __extract_images(site, img_id):
             raise Exception(f"{img_id}:{site} not handled.")
 
 
-async def extract(file, nosaving, nodanbooru, force, collection):
+async def extract_from_file(file, nosaving, nodanbooru, force, collection):
+    img_data = __extract_data_from_file(file)
+
+    # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
+    if not await extract(img_data, nosaving, nodanbooru, force, collection):
+        print("Extraction complete. See output for errors.")
+    else:
+        print("Extraction complete. No issues encountered, removing file.")
+        os.remove(file)
+
+
+async def extract_from_url(url):
+    img_data = __extract_urls([url])
+
+    if not await extract(img_data, False, False, False, True):
+        print("Extraction failed. See output for errors.")
+    else:
+        print("Extraction complete.")
+
+
+async def extract(img_data, nosaving, nodanbooru, force, collection):
     if not any(await twt_api.pool.get_all()):
         print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
         exit()
@@ -125,8 +148,7 @@ async def extract(file, nosaving, nodanbooru, force, collection):
     # since it's a bit of a pain to extract a valid token.
     pixiv_api.set_auth(os.getenv("PIXIV_TOKEN"))
 
-    errors_encountered = False
-    for site, artist, img_id in __extract_ids(file):
+    for site, artist, img_id in img_data:
         try:
             if pcloud.file_exists(artist, img_id):
                 continue
@@ -146,11 +168,6 @@ async def extract(file, nosaving, nodanbooru, force, collection):
                     print(f"{Fore.YELLOW}Saving disabled, {img_id} skipped.{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
-            errors_encountered = True
+            return False
 
-    # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
-    if errors_encountered:
-        print("Extraction complete. See output for errors.")
-    else:
-        print("Extraction complete. No issues encountered, removing file.")
-        os.remove(file)
+    return True
