@@ -53,12 +53,18 @@ artist_directories:dict[str:str] = set_artist_dir(__artist_path)
 ai_art_directories:set[str] = os.listdir(__ai_art_path) #These are named 1:1, don't need specific logic
 
 
-def save_pcloud_twitter(img_id, artist, url, filename):
+def set_path(artist):
     path = __default_path
     if artist in artist_directories:
         path = __artist_path + artist_directories[artist] + "/"
     if artist in ai_art_directories:
         path = __ai_art_path + artist + "/"
+    
+    return path
+
+
+def save_pcloud_twitter(img_id, artist, url, filename):
+    path = set_path(artist)
 
     filepath = path + artist + " - " + str(img_id) + " - " + filename
     urllib.request.urlretrieve(url, filepath)
@@ -67,19 +73,23 @@ def save_pcloud_twitter(img_id, artist, url, filename):
 
 
 def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
-    path = __default_path
     img_id = pixiv_img.id
     artist = pixiv_img.user.account
-    if artist in artist_directories:
-        path = __artist_path + artist_directories[artist] + "/"
-    if artist in ai_art_directories:
-        path = __ai_art_path + artist + "/"
+        
+    if file_exists(artist, img_id):
+        return
 
-    for img in pixiv_img.meta_pages:
-        url:str = img.image_urls.original
+    path = set_path(artist)
+
+    def extract_image(url):
         img_name = url[url.rfind("/") + 1:]
         file_name = artist + " - " + str(img_id) + " - " + img_name
         pixiv_api.download(url, path=path, name = file_name)
         print(str(img_name) + " saved to " + path + file_name)
+        __file_list[f"{artist} - {img_id}"] = path + file_name
 
-    __file_list[f"{artist} - {img_id}"] = path + file_name
+    if any(pixiv_img.meta_pages):
+        for img in pixiv_img.meta_pages:
+            extract_image(img.image_urls.original)
+    elif not pixiv_img.meta_single_page is None:
+        extract_image(pixiv_img.meta_single_page.original_image_url)

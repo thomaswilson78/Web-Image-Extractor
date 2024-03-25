@@ -74,6 +74,9 @@ def __extract_urls(lines:list[str]):
                 # id @ 3: /{lang}/artworks/{illustration_id}
                 img_data.append((url.hostname, "", split_path[3])) 
             case "danbooru.donmai.us":
+                if url.path.find("/posts/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
+                    continue
                 # id @ 2: /post/{post_id}
                 post_id = split_path[2]
                 # Ensure that if any parameters were in the url that they're removed.
@@ -118,10 +121,10 @@ async def __extract_images(site, img_id):
                 url = image.url + "?name=4096x4096"
                 filename = image.url[image.url.rfind('/') + 1:]
                 pcloud.save_pcloud_twitter(img_id, tw_response.user.username, url, filename)
-            # Would like a way to extract videos as well, but need to sit on this
-            # for video in tw_response.media.videos:
-            #     for variant in video.variants
-            #         variant.url
+                # Would like a way to extract videos as well, but need to sit on this
+                # for video in tw_response.media.videos:
+                #     for variant in video.variants
+                #         variant.url
         case "pixiv.net" | "www.pixiv.net":
             pix_response = pixiv_api.illust_detail(img_id)
             if any(pix_response) and any(pix_response.illust):
