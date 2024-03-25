@@ -7,6 +7,7 @@ import urllib.parse as urlparse
 import pcloud
 import twscrape
 import pixivpy3
+import pixiv_auth
 from colorama import Fore, Style
 
 if sys.platform == "linux":
@@ -16,9 +17,21 @@ elif sys.platform == "win32":
 
 import danbooru
 
+
 pixiv_api = pixivpy3.AppPixivAPI()
 twt_api = twscrape.API()
 dan_api = danbooru.API()
+
+
+# Pixiv refresh tokens expire, needs to be periodically updated
+def set_pixiv_refresh_token():
+    old_token = os.getenv("PIXIV_REFRESH_TOKEN")
+    new_token = pixiv_auth.refresh(old_token)
+    os.environ["PIXIV_REFRESH_TOKEN"] = new_token
+    pixiv_api.auth(refresh_token=new_token)
+
+    return new_token
+
 
 # Pull the website and associated ID with post
 def __extract_data_from_file(file):
@@ -37,6 +50,7 @@ def __extract_data_from_file(file):
 
 def __extract_urls(lines:list[str]):
     img_data = []
+    pixiv_auth_set = False
     for line in lines:
         url = urlparse.urlparse(line)
         # NOTE: path starts with "/" so you'll need to account for an extra item in the list
@@ -50,7 +64,10 @@ def __extract_urls(lines:list[str]):
                     continue
                 # account @ 1, id @ 3: /{account}/status/{tweet_id}
                 img_data.append((url.hostname, split_path[1], split_path[3]))
-            case "pixiv.net":
+            case "pixiv.net" | "www.pixiv.net":
+                if not pixiv_auth_set:
+                    set_pixiv_refresh_token()
+                    pixiv_auth_set = True
                 # Make sure the URL is to the image
                 if url.path.find("/artworks/") < 0:
                     print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
@@ -100,19 +117,15 @@ async def __extract_images(site, img_id):
                 # make sure image is at max resolution
                 url = image.url + "?name=4096x4096"
                 filename = image.url[image.url.rfind('/') + 1:]
-                pcloud.save_pcloud(img_id, tw_response.user.username, url, filename)
+                pcloud.save_pcloud_twitter(img_id, tw_response.user.username, url, filename)
             # Would like a way to extract videos as well, but need to sit on this
             # for video in tw_response.media.videos:
             #     for variant in video.variants
             #         variant.url
-        case "pixiv.net":
-            return
-            # I'll try to figure this out later, not sure how to handle
-            # pages w/ multiple images.
-            # pix_response = pixiv_api.illust_detail(img_id)
-            # filename = pixiv_api.download("")
-            # pcloud.save_pcloud(img_id, pix_response["user"]["name"], url)
-            # continue
+        case "pixiv.net" | "www.pixiv.net":
+            pix_response = pixiv_api.illust_detail(img_id)
+            if any(pix_response) and any(pix_response.illust):
+                pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
         case _:
             raise Exception(f"{img_id}:{site} not handled.")
 
@@ -143,10 +156,6 @@ async def extract(img_data, nosaving, nodanbooru, force, collection):
         exit()
 
     await twt_api.pool.login_all()
-    # I'm not sure how good this token is, I think it has to be refreshed every
-    # hour. I may just scrap this if it becomes a major hurdle, especially
-    # since it's a bit of a pain to extract a valid token.
-    pixiv_api.set_auth(os.getenv("PIXIV_TOKEN"))
 
     for site, artist, img_id in img_data:
         try:
