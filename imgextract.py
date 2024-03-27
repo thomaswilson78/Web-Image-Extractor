@@ -9,6 +9,7 @@ import twscrape
 import pixivpy3
 import pixiv_auth
 from colorama import Fore, Style
+from operator import attrgetter
 
 if sys.platform == "linux":
     sys.path.append(os.path.expanduser("~/pCloudDrive/repos/DanbooruAPI/"))
@@ -44,7 +45,7 @@ def __extract_data_from_file(file):
     if not any(lines):
         raise Exception("Empty file.")
     
-    lines = [re.sub("^\d+\. ", "", li).replace("\n","") for li in lines]
+    lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
     return __extract_urls(lines)
 
@@ -71,9 +72,11 @@ def __extract_urls(lines:list[str]):
                 # Make sure the URL is to the image
                 if url.path.find("/artworks/") < 0:
                     print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
+                    continue
                 # id @ 3: /{lang}/artworks/{illustration_id}
                 img_data.append((url.hostname, "", split_path[3])) 
             case "danbooru.donmai.us":
+                # Make sure the URL is to the image
                 if url.path.find("/posts/") < 0:
                     print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
                     continue
@@ -121,10 +124,14 @@ async def __extract_images(site, img_id):
                 url = image.url + "?name=4096x4096"
                 filename = image.url[image.url.rfind('/') + 1:]
                 pcloud.save_pcloud_twitter(img_id, tw_response.user.username, url, filename)
-                # Would like a way to extract videos as well, but need to sit on this
-                # for video in tw_response.media.videos:
-                #     for variant in video.variants
-                #         variant.url
+            for video in tw_response.media.videos:
+                vid:twscrape.MediaVideoVariant = max(video.variants, key=attrgetter("bitrate"))
+                filename = vid.url[vid.url.rfind('/') + 1:vid.url.rfind('?')]
+                pcloud.save_pcloud_twitter(img_id, tw_response.user.username, vid.url, filename)
+            for animation in tw_response.media.animated:
+                url = animation.videoUrl
+                filename = url[url.rfind('/') + 1:]
+                pcloud.save_pcloud_twitter(img_id, tw_response.user.username, url, filename)
         case "pixiv.net" | "www.pixiv.net":
             pix_response = pixiv_api.illust_detail(img_id)
             if any(pix_response) and any(pix_response.illust):
