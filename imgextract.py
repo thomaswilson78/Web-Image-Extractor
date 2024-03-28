@@ -102,7 +102,11 @@ def __fav_danbooru(site, img_id):
         print(f"Favorited {img_id}.")
         dan_found = True
     else:
-        params = {"tags": f"source:*{site}*{img_id}"}
+        params = {}
+        if site == "pixiv.net": # Pixiv for some reason has it's own tag
+            params = {"tags": f"pixiv:{img_id}"}
+        else:
+            params = {"tags": f"source:*{site}*{img_id}"}
         json_data = dan_api.get_posts(params)
 
         dan_found = any(json_data)
