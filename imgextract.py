@@ -144,32 +144,35 @@ async def __extract_images(site, img_id):
             raise Exception(f"{img_id}:{site} not handled.")
 
 
-async def extract_from_file(file, nosaving, nodanbooru, force, collection):
+async def extract_from_file(file, nosaving, nodanbooru, force, collection, is_ai_art):
     img_data = __extract_data_from_file(file)
 
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
-    if not await extract(img_data, nosaving, nodanbooru, force, collection):
+    if not await extract(img_data, nosaving, nodanbooru, force, collection, is_ai_art):
         print("Extraction complete. See output for errors.")
     else:
         print("Extraction complete. No issues encountered, removing file.")
         os.remove(file)
 
 
-async def extract_from_url(url):
+async def extract_from_url(url, is_ai_art):
     img_data = __extract_urls([url])
 
-    if not await extract(img_data, False, False, False, True):
+    if not await extract(img_data, False, False, False, True, is_ai_art):
         print("Extraction failed. See output for errors.")
     else:
         print("Extraction complete.")
 
 
-async def extract(img_data, nosaving, nodanbooru, force, collection):
+async def extract(img_data, nosaving, nodanbooru, force, collection, is_ai_art):
     if not any(await twt_api.pool.get_all()):
         print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
         exit()
 
     await twt_api.pool.login_all()
+
+    if is_ai_art:
+        pcloud.set_ai_art_path()
 
     for site, artist, img_id in img_data:
         try:

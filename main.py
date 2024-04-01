@@ -43,15 +43,19 @@ async def remove_twitter_account(username):
               help="Forces all images to save regardless if found on Danbooru.")
 @click.option("-c", "--collection", is_flag=True, default=False, 
               help="If artist is part of a collection, save image.")
-async def extract(file, nosaving, nodanbooru, force, collection):
+@click.option("-ai", "--ai_art", is_flag=True, default=False, 
+              help="Indicated if arts is AI generated.")
+async def extract(file, nosaving, nodanbooru, force, collection, ai_art):
     """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
-    await imgextract.extract_from_file(file, nosaving, nodanbooru, force, collection)
+    await imgextract.extract_from_file(file, nosaving, nodanbooru, force, collection, ai_art)
 
 
 @click.command()
 @click.argument("url")
-async def extract_url(url:str):
-    await imgextract.extract_from_url(url)
+@click.option("-ai", "--ai_art", is_flag=True, default=False, 
+              help="Indicated if arts is AI generated.")
+async def extract_url(url:str, ai_art):
+    await imgextract.extract_from_url(url, ai_art)
 
 
 commands.add_command(extract)

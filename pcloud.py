@@ -17,6 +17,11 @@ __artist_path = __pcloud_path + "Images/Other/Artist Collections/"
 __ai_art_path = __pcloud_path + "Images/Other/AI Art/_Collections/"
 
 
+def set_ai_art_path():
+    global __default_path
+    __default_path =  __pcloud_path + "Images/Other/AI Art/_Need Sorted/"
+
+
 def get_file_list() -> dict[str:str]:
     """Pulls all files that use the extraction naming convention -> {uploader/artist} - {location/status} - {image_id}"""
     all_files = [f"{dir}/{f}" for dir, _, files in os.walk(__pcloud_path+"Images") for f in files]
@@ -57,7 +62,7 @@ def set_path(artist):
     path = __default_path
     if artist in artist_directories:
         path = __artist_path + artist_directories[artist] + "/"
-    if artist in ai_art_directories:
+    elif artist in ai_art_directories:
         path = __ai_art_path + artist + "/"
     
     return path
