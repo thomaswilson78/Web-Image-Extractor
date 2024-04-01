@@ -35,19 +35,13 @@ async def remove_twitter_account(username):
 
 @click.command()
 @click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.option("-ns", "--nosaving", is_flag=True, default=False, 
-              help="Disables saving, only adds to favorites.")
-@click.option("-nd", "--nodanbooru", is_flag=True, default=False, 
-              help="Disables favoriting image to Danbooru, only saves.")
-@click.option("-f", "--force", is_flag=True, default=False, 
-              help="Forces all images to save regardless if found on Danbooru.")
 @click.option("-c", "--collection", is_flag=True, default=False, 
               help="If artist is part of a collection, save image.")
 @click.option("-ai", "--ai_art", is_flag=True, default=False, 
               help="Indicated if arts is AI generated.")
-async def extract(file, nosaving, nodanbooru, force, collection, ai_art):
+async def extract(file, collection, ai_art):
     """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
-    await imgextract.extract_from_file(file, nosaving, nodanbooru, force, collection, ai_art)
+    await imgextract.extract_from_file(file, collection, ai_art)
 
 
 @click.command()

@@ -44,12 +44,13 @@ def __extract_data_from_file(file):
 
     if not any(lines):
         raise Exception("Empty file.")
-    
-    lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
     return __extract_urls(lines)
 
 def __extract_urls(lines:list[str]):
+    # Ensure urls are properly useable by removing list indexes, new lines and the "www." prefix
+    lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
+
     img_data = []
     pixiv_auth_set = False
     for line in lines:
@@ -65,7 +66,7 @@ def __extract_urls(lines:list[str]):
                     continue
                 # account @ 1, id @ 3: /{account}/status/{tweet_id}
                 img_data.append((url.hostname, split_path[1], split_path[3]))
-            case "pixiv.net" | "www.pixiv.net":
+            case "pixiv.net":
                 if not pixiv_auth_set:
                     set_pixiv_refresh_token()
                     pixiv_auth_set = True
@@ -113,6 +114,10 @@ def __fav_danbooru(site, img_id):
         
         if dan_found:
             for item in json_data:
+                # If art is attached to a banned artist, then ignore it because it's locked and cannot be viewed.
+                if item['is_banned']:
+                    print(f"{Fore.YELLOW}Danbooru lists {item['id']} as made by a banned artist. Have to save manually.{Style.RESET_ALL}")
+                    return False
                 dan_api.add_favorite(item["id"])
                 print(f"Favorited {img_id} to post {item['id']}.")
 
@@ -144,11 +149,11 @@ async def __extract_images(site, img_id):
             raise Exception(f"{img_id}:{site} not handled.")
 
 
-async def extract_from_file(file, nosaving, nodanbooru, force, collection, is_ai_art):
+async def extract_from_file(file, collection, is_ai_art):
     img_data = __extract_data_from_file(file)
 
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
-    if not await extract(img_data, nosaving, nodanbooru, force, collection, is_ai_art):
+    if not await extract(img_data, collection, is_ai_art):
         print("Extraction complete. See output for errors.")
     else:
         print("Extraction complete. No issues encountered, removing file.")
@@ -158,13 +163,13 @@ async def extract_from_file(file, nosaving, nodanbooru, force, collection, is_ai
 async def extract_from_url(url, is_ai_art):
     img_data = __extract_urls([url])
 
-    if not await extract(img_data, False, False, False, True, is_ai_art):
+    if not await extract(img_data, True, is_ai_art):
         print("Extraction failed. See output for errors.")
     else:
         print("Extraction complete.")
 
 
-async def extract(img_data, nosaving, nodanbooru, force, collection, is_ai_art):
+async def extract(img_data, collection, is_ai_art):
     if not any(await twt_api.pool.get_all()):
         print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
         exit()
@@ -179,19 +184,13 @@ async def extract(img_data, nosaving, nodanbooru, force, collection, is_ai_art):
             if pcloud.file_exists(artist, img_id):
                 continue
 
-            dan_found = 0
-            if not nodanbooru:
-                dan_found = __fav_danbooru(site, img_id)
-                # Force saving if artist part of a collection
-                if dan_found and collection:
-                    if artist in pcloud.artist_directories:
-                        dan_found = False 
+            dan_found = __fav_danbooru(site, img_id)
+            # Force saving if artist part of a collection
+            if collection and artist in pcloud.artist_directories:
+                dan_found = False 
                     
-            if not dan_found or force:
-                if not nosaving:
-                    await __extract_images(site, img_id)
-                else:
-                    print(f"{Fore.YELLOW}Saving disabled, {img_id} skipped.{Style.RESET_ALL}")
+            if not dan_found:
+                await __extract_images(site, img_id)
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
             return False
