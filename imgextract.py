@@ -24,6 +24,9 @@ twt_api = twscrape.API()
 dan_api = danbooru.API()
 
 
+file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".webm"]
+
+
 # Pixiv refresh tokens expire, needs to be periodically updated
 def set_pixiv_refresh_token():
     old_token = os.getenv("PIXIV_REFRESH_TOKEN")
@@ -53,33 +56,33 @@ def __extract_urls(lines:list[str]):
 
     img_data = []
     pixiv_auth_set = False
-    for line in lines:
-        url = urlparse.urlparse(line)
+    for url in lines:
+        parsed_url = urlparse.urlparse(url)
         # NOTE: path starts with "/" so you'll need to account for an extra item in the list
-        split_path = url.path.split("/")
+        split_path = parsed_url.path.split("/")
 
-        match url.hostname:
+        match parsed_url.hostname:
             case "twitter.com":
                 # Make sure the URL is to a status, not to home, search, etc.
-                if url.path.find("/status/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
+                if parsed_url.path.find("/status/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
                     continue
                 # account @ 1, id @ 3: /{account}/status/{tweet_id}
-                img_data.append((url.hostname, split_path[1], split_path[3]))
+                img_data.append((parsed_url.hostname, split_path[1], split_path[3], url))
             case "pixiv.net":
                 if not pixiv_auth_set:
                     set_pixiv_refresh_token()
                     pixiv_auth_set = True
                 # Make sure the URL is to the image
-                if url.path.find("/artworks/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
+                if parsed_url.path.find("/artworks/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
                     continue
                 # id @ 3: /{lang}/artworks/{illustration_id}
-                img_data.append((url.hostname, "", split_path[3])) 
+                img_data.append((parsed_url.hostname, "", split_path[3], url)) 
             case "danbooru.donmai.us":
                 # Make sure the URL is to the image
-                if url.path.find("/posts/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {line}{Style.RESET_ALL}")
+                if parsed_url.path.find("/posts/") < 0:
+                    print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
                     continue
                 # id @ 2: /post/{post_id}
                 post_id = split_path[2]
@@ -87,10 +90,13 @@ def __extract_urls(lines:list[str]):
                 index = post_id.find("?")
                 if index > 0:
                     post_id = post_id[:index]
-                img_data.append((url.hostname, "", post_id)) 
+                img_data.append((parsed_url.hostname, "", post_id, url)) 
             case _:
-                print(f"{Fore.YELLOW}Unable to pull ID, {url.hostname} is not supported.{Style.RESET_ALL}")
-                continue
+                if not any([url.endswith(format) for format in file_formats]):
+                    print(f"{Fore.YELLOW}Url does not contain an image/video: {parsed_url.geturl()}{Style.RESET_ALL}")
+                    continue
+                img_data.append((parsed_url.hostname, "", None, url))
+
 
     return img_data
 
@@ -124,7 +130,7 @@ def __fav_danbooru(site, img_id):
     return dan_found
 
 
-async def __extract_images(site, img_id):
+async def __extract_images(site, img_id, url):
     match site:
         case "twitter.com":
             tw_response = await twt_api.tweet_details(int(img_id))
@@ -146,7 +152,7 @@ async def __extract_images(site, img_id):
             if any(pix_response) and any(pix_response.illust):
                 pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
         case _:
-            raise Exception(f"{img_id}:{site} not handled.")
+            pcloud.save_pcloud_other(site, url)
 
 
 async def extract_from_file(file, collection, is_ai_art):
@@ -154,7 +160,7 @@ async def extract_from_file(file, collection, is_ai_art):
 
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
     if not await extract(img_data, collection, is_ai_art):
-        print("Extraction complete. See output for errors.")
+        print("Extraction failed. See output for errors.")
     else:
         print("Extraction complete. No issues encountered, removing file.")
         os.remove(file)
@@ -179,18 +185,24 @@ async def extract(img_data, collection, is_ai_art):
     if is_ai_art:
         pcloud.set_ai_art_path()
 
-    for site, artist, img_id in img_data:
+    for site, artist, img_id, url in img_data:
         try:
-            if pcloud.file_exists(artist, img_id):
-                continue
+            dan_found = False 
+            if not img_id is None:
+                if pcloud.file_exists(artist, img_id):
+                    continue
 
-            dan_found = __fav_danbooru(site, img_id)
-            # Force saving if artist part of a collection
-            if collection and artist in pcloud.artist_directories:
-                dan_found = False 
+                dan_found = __fav_danbooru(site, img_id)
+                # Force saving if artist part of a collection
+                if collection and artist in pcloud.artist_directories:
+                    dan_found = False 
+            else:
+                filename = url[str.rfind(url, "/")+1:]
+                if pcloud.file_exists(site, filename):
+                    continue
                     
             if not dan_found:
-                await __extract_images(site, img_id)
+                await __extract_images(site, img_id, url)
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
             return False

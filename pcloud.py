@@ -2,6 +2,7 @@ import os
 import sys
 import urllib
 import re
+import requests
 from colorama import Fore, Style
 from pixivpy3 import AppPixivAPI
 
@@ -25,7 +26,7 @@ def set_ai_art_path():
 def get_file_list() -> dict[str:str]:
     """Pulls all files that use the extraction naming convention -> {uploader/artist} - {location/status} - {image_id}"""
     all_files = [f"{dir}/{f}" for dir, _, files in os.walk(__pcloud_path+"Images") for f in files]
-    filtered_files:list[str] = list(filter(lambda f: re.match("/.+ - \d+ - ", f), all_files))
+    filtered_files:list[str] = list(filter(lambda f: re.match("/.+ - .+\..+", f), all_files))
     return {f"{os.path.basename(f.split(' - ')[0])} - {f.split(' - ')[1]}":f for f in filtered_files}
 
 __file_list = get_file_list()
@@ -98,3 +99,14 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
             extract_image(img.image_urls.original)
     elif not pixiv_img.meta_single_page is None:
         extract_image(pixiv_img.meta_single_page.original_image_url)
+
+
+def save_pcloud_other(site, url):
+    filename = site + " - " + url[str.rfind(url, "/")+1:]
+    filepath = os.path.join(__default_path, filename)
+
+    r = requests.get(url)
+    with open(filepath, 'wb') as outfile:
+        outfile.write(r.content)
+
+    print(str(filename) + " saved to " + filepath)
