@@ -52,10 +52,18 @@ async def extract_url(url:str, ai_art):
     await imgextract.extract_from_url(url, ai_art)
 
 
+@click.command()
+@click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+async def iqdb(file):
+    """Check if iqdb can find image on imageboard sites."""
+    await imgextract.iqdb(file)
+
+
 commands.add_command(extract)
 commands.add_command(extract_url)
 commands.add_command(add_twitter_account)
 commands.add_command(remove_twitter_account)
+commands.add_command(iqdb)
 
 if __name__ == "__main__":
     commands()

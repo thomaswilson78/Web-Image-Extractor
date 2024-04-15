@@ -3,11 +3,15 @@
 import os
 import sys
 import re
+import random
 import urllib.parse as urlparse
-import pcloud
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
 import twscrape
 import pixivpy3
 import pixiv_auth
+import pcloud
 from colorama import Fore, Style
 from operator import attrgetter
 
@@ -160,7 +164,7 @@ async def extract_from_file(file, collection, is_ai_art):
 
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
     if not await extract(img_data, collection, is_ai_art):
-        print("Extraction failed. See output for errors.")
+        print("Extraction complete. See output for errors.")
     else:
         print("Extraction complete. No issues encountered, removing file.")
         os.remove(file)
@@ -185,6 +189,7 @@ async def extract(img_data, collection, is_ai_art):
     if is_ai_art:
         pcloud.set_ai_art_path()
 
+    no_errors = True
     for site, artist, img_id, url in img_data:
         try:
             dan_found = False 
@@ -205,6 +210,59 @@ async def extract(img_data, collection, is_ai_art):
                 await __extract_images(site, img_id, url)
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
-            return False
+            no_errors = False
 
-    return True
+    return no_errors
+
+
+async def iqdb(file):
+    img_data = __extract_data_from_file(file)
+    current_directory = os.getcwd()
+    service = webdriver.ChromeService(executable_path=rf"{current_directory}/chromedriver")
+    options = webdriver.ChromeOptions()
+    options.add_experimental_option("detach", True)
+    options.add_extension(extension=rf"{current_directory}/tabs2txt.crx")
+    driver = webdriver.Chrome(options=options,service=service)
+
+    def execute_web_driver(url):
+        driver.switch_to.new_window('tab')
+        driver.get("https://iqdb.org/")
+        
+        driver.implicitly_wait(5)
+        time.sleep(random.uniform(.4, .7))
+
+        url_text_box = driver.find_element(by=By.ID, value="url")
+        submit_button = driver.find_element(by=By.CSS_SELECTOR, value="input[type='submit']")
+
+        url_text_box.send_keys(url)
+        submit_button.click()
+
+        #To make traffic looks less suspect and to not overwhelm servers and potentially get banned.
+        time.sleep(round(random.uniform(4.000, 6.999), 2))
+
+    for site, _, img_id, url in img_data:
+        try:
+            #driver.switch_to.new_window('tab')
+            #driver.get(url)
+
+            match site:
+                case "twitter.com":
+                    tw_response = await twt_api.tweet_details(int(img_id))
+                    for image in tw_response.media.photos:
+                        image_url = image.url + "?name=small" # Small should suffice and uses less bandwidth
+                        execute_web_driver(image_url)
+                case "pixiv.net" | "www.pixiv.net":
+                    pix_response = pixiv_api.illust_detail(img_id)
+                    if any(pix_response) and any(pix_response.illust):
+                        pixiv_img = pix_response.illust
+                        if any(pixiv_img.meta_pages): # Multi Image
+                            for img in pixiv_img.meta_pages:
+                                execute_web_driver(img.image_urls.medium)
+                        else: # Single Image
+                            execute_web_driver(pixiv_img.image_urls.medium)
+                case _:
+                    execute_web_driver(url)
+        except Exception as e:
+            print(e)
+
+    print("Done.")
