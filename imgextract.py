@@ -217,11 +217,17 @@ async def extract(img_data, collection, is_ai_art):
 
 async def iqdb(file):
     img_data = __extract_data_from_file(file)
+
     current_directory = os.getcwd()
     service = webdriver.ChromeService(executable_path=rf"{current_directory}/chromedriver")
+
     options = webdriver.ChromeOptions()
     options.add_experimental_option("detach", True)
-    options.add_extension(extension=rf"{current_directory}/tabs2txt.crx")
+
+    ext_path = f"{current_directory}/Extensions/"
+    for ext in os.listdir(ext_path):
+        options.add_extension(extension=rf"{ext_path}/{ext}")
+
     driver = webdriver.Chrome(options=options,service=service)
 
     def execute_web_driver(url):
@@ -242,8 +248,8 @@ async def iqdb(file):
 
     for site, _, img_id, url in img_data:
         try:
-            #driver.switch_to.new_window('tab')
-            #driver.get(url)
+            driver.switch_to.new_window('tab')
+            driver.get(url)
 
             match site:
                 case "twitter.com":
