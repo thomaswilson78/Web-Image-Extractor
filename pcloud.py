@@ -56,7 +56,7 @@ def set_artist_dir(directory) -> dict[str:str]:
 
 
 artist_directories:dict[str:str] = set_artist_dir(__artist_path)
-ai_art_directories:set[str] = os.listdir(__ai_art_path) #These are named 1:1, don't need specific logic
+ai_art_directories:set[str] = os.listdir(__ai_art_path) # These are named 1:1, don't need specific logic
 
 
 def set_path(artist):

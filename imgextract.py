@@ -159,11 +159,11 @@ async def __extract_images(site, img_id, url):
             pcloud.save_pcloud_other(site, url)
 
 
-async def extract_from_file(file, collection, is_ai_art):
+async def extract_from_file(file, is_ai_art):
     img_data = __extract_data_from_file(file)
 
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
-    if not await extract(img_data, collection, is_ai_art):
+    if not await extract(img_data, is_ai_art):
         print("Extraction complete. See output for errors.")
     else:
         print("Extraction complete. No issues encountered, removing file.")
@@ -173,13 +173,13 @@ async def extract_from_file(file, collection, is_ai_art):
 async def extract_from_url(url, is_ai_art):
     img_data = __extract_urls([url])
 
-    if not await extract(img_data, True, is_ai_art):
+    if not await extract(img_data, is_ai_art):
         print("Extraction failed. See output for errors.")
     else:
         print("Extraction complete.")
 
 
-async def extract(img_data, collection, is_ai_art):
+async def extract(img_data, is_ai_art):
     if not any(await twt_api.pool.get_all()):
         print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
         exit()
@@ -198,8 +198,8 @@ async def extract(img_data, collection, is_ai_art):
                     continue
 
                 dan_found = __fav_danbooru(site, img_id)
-                # Force saving if artist part of a collection
-                if collection and artist in pcloud.artist_directories:
+                # Force saving locally if artist part of a collection
+                if artist in pcloud.artist_directories:
                     dan_found = False 
             else:
                 filename = url[str.rfind(url, "/")+1:]
@@ -261,6 +261,10 @@ async def iqdb(file):
                     pix_response = pixiv_api.illust_detail(img_id)
                     if any(pix_response) and any(pix_response.illust):
                         pixiv_img = pix_response.illust
+                        # Skip AI images
+                        if 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags]:
+                            continue
+
                         if any(pixiv_img.meta_pages): # Multi Image
                             for img in pixiv_img.meta_pages:
                                 execute_web_driver(img.image_urls.medium)

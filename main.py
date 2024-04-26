@@ -35,13 +35,11 @@ async def remove_twitter_account(username):
 
 @click.command()
 @click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.option("-c", "--collection", is_flag=True, default=False, 
-              help="If artist is part of a collection, save image.")
 @click.option("-ai", "--ai_art", is_flag=True, default=False, 
               help="Indicated if arts is AI generated.")
-async def extract(file, collection, ai_art):
+async def extract(file, ai_art):
     """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
-    await imgextract.extract_from_file(file, collection, ai_art)
+    await imgextract.extract_from_file(file, ai_art)
 
 
 @click.command()
