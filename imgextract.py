@@ -193,7 +193,7 @@ async def extract(img_data, is_ai_art):
     for site, artist, img_id, url in img_data:
         try:
             dan_found = False 
-            if not img_id is None:
+            if not is_ai_art and not img_id is None:
                 if pcloud.file_exists(artist, img_id):
                     continue
 
