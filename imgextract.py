@@ -33,6 +33,7 @@ file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".web
 
 # Pixiv refresh tokens expire, needs to be periodically updated
 def set_pixiv_refresh_token():
+    """Update Pixiv access token."""
     old_token = os.getenv("PIXIV_REFRESH_TOKEN")
     new_token = pixiv_auth.refresh(old_token)
     os.environ["PIXIV_REFRESH_TOKEN"] = new_token
@@ -41,8 +42,8 @@ def set_pixiv_refresh_token():
     return new_token
 
 
-# Pull the website and associated ID with post
 def __extract_data_from_file(file):
+    """Exact urls from file"""
     extension = os.path.splitext(file)[1]
     if not extension == ".txt":
         raise Exception("Incorrect file format.")
@@ -55,6 +56,7 @@ def __extract_data_from_file(file):
     return __extract_urls(lines)
 
 def __extract_urls(lines:list[str]):
+    """Properly format and extract url and url related meta-data."""
     # Ensure urls are properly useable by removing list indexes, new lines and the "www." prefix
     lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
@@ -114,19 +116,20 @@ def __fav_danbooru(site, img_id):
         dan_found = True
     else:
         params = {}
-        if site == "pixiv.net": # Pixiv for some reason has it's own tag
+        if site == "pixiv.net": # Pixiv for some reason has its own separate tag
             params = {"tags": f"pixiv:{img_id}"}
         else:
             params = {"tags": f"source:*{site}*{img_id}"}
+
         json_data = dan_api.get_posts(params)
 
         dan_found = any(json_data)
         
         if dan_found:
             for item in json_data:
-                # If art is attached to a banned artist, then ignore it because it's locked and cannot be viewed.
+                # If art is attached to a banned artist, then ignore it because it's blocked and cannot be viewed.
                 if item['is_banned']:
-                    print(f"{Fore.YELLOW}Danbooru lists {item['id']} as made by a banned artist. Have to save manually.{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}{img_id}: Danbooru lists {item['id']} as made by a banned artist. Defaulting to saving locally.{Style.RESET_ALL}")
                     return False
                 dan_api.add_favorite(item["id"])
                 print(f"Favorited {img_id} to post {item['id']}.")
@@ -187,7 +190,7 @@ async def extract(img_data, is_ai_art):
     await twt_api.pool.login_all()
 
     if is_ai_art:
-        pcloud.set_ai_art_path()
+        pcloud.set_ai_art()
 
     no_errors = True
     for site, artist, img_id, url in img_data:
@@ -252,6 +255,8 @@ async def iqdb(file):
             driver.get(url)
 
             match site:
+                case "danbooru.donmai.us":
+                    continue
                 case "twitter.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
                     for image in tw_response.media.photos:

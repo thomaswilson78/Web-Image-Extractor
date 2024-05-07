@@ -2,3 +2,4 @@
 accounts.db
 .vscode/*
 __pycache__/*
+Tests/*

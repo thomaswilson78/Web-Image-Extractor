@@ -16,11 +16,18 @@ elif sys.platform == "win32":
 __default_path = __pcloud_path + "Images/_Need Sorted/"
 __artist_path = __pcloud_path + "Images/Other/Artist Collections/"
 __ai_art_path = __pcloud_path + "Images/Other/AI Art/_Collections/"
+__is_ai_art = False
 
 
-def set_ai_art_path():
-    global __default_path
+def set_ai_art():
+    global __is_ai_art, __default_path
+    __is_ai_art = True
     __default_path =  __pcloud_path + "Images/Other/AI Art/_Need Sorted/"
+    
+
+def __set_ai_filename(filename:str) -> str:
+    name, ext = os.path.splitext(filename)
+    return name + ' [AI]' + ext
 
 
 def get_file_list() -> dict[str:str]:
@@ -72,6 +79,9 @@ def set_path(artist):
 def save_pcloud_twitter(img_id, artist, url, filename):
     path = set_path(artist)
 
+    if __is_ai_art:
+        filename = __set_ai_filename(filename)
+
     filepath = path + artist + " - " + str(img_id) + " - " + filename
     urllib.request.urlretrieve(url, filepath)
     __file_list[f"{artist} - {img_id}"] = filepath
@@ -88,10 +98,12 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
     path = set_path(artist)
 
     def extract_image(url):
-        img_name = url[url.rfind("/") + 1:]
-        file_name = artist + " - " + str(img_id) + " - " + img_name
+        img_num = url[url.rfind("/") + 1:]
+        file_name = artist + " - " + str(img_id) + " - " + img_num
+        if __is_ai_art:
+            filename = __set_ai_filename(filename)
         pixiv_api.download(url, path=path, name = file_name)
-        print(str(img_name) + " saved to " + path + file_name)
+        print(str(img_num) + " saved to " + path + file_name)
         __file_list[f"{artist} - {img_id}"] = path + file_name
 
     if any(pixiv_img.meta_pages):
@@ -103,6 +115,9 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
 
 def save_pcloud_other(site, url):
     filename = site + " - " + url[str.rfind(url, "/")+1:]
+    if __is_ai_art:
+        filename = __set_ai_filename(filename)
+        
     filepath = os.path.join(__default_path, filename)
 
     r = requests.get(url)
