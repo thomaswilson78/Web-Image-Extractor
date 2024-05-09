@@ -1,9 +1,7 @@
 import os
 import sys
-import urllib
 import re
 import requests
-from colorama import Fore, Style
 from pixivpy3 import AppPixivAPI
 
 __pcloud_path = ""
@@ -16,18 +14,20 @@ elif sys.platform == "win32":
 __default_path = __pcloud_path + "Images/_Need Sorted/"
 __artist_path = __pcloud_path + "Images/Other/Artist Collections/"
 __ai_art_path = __pcloud_path + "Images/Other/AI Art/_Collections/"
-__is_ai_art = False
+__meta_tags = ""
 
 
-def set_ai_art():
-    global __is_ai_art, __default_path
-    __is_ai_art = True
-    __default_path =  __pcloud_path + "Images/Other/AI Art/_Need Sorted/"
+def set_tags(is_ai, is_noscan):
+    global __meta_tags, __default_path
+    if is_ai:
+        __meta_tags += " [AI]"
+    if is_noscan:
+        __meta_tags += " [NoScan]"
     
 
-def __set_ai_filename(filename:str) -> str:
+def __add_filename_tags(filename:str, temp_tags:str = "") -> str:
     name, ext = os.path.splitext(filename)
-    return name + ' [AI]' + ext
+    return name + __meta_tags + temp_tags + ext
 
 
 def get_file_list() -> dict[str:str]:
@@ -79,10 +79,7 @@ def save_pcloud(url, **kwargs):
         artist = kwargs["artist"]
 
     path = set_path(artist)
-    filename = " - ".join(kwargs.values())
-
-    if __is_ai_art:
-        filename = __set_ai_filename(filename)
+    filename = __add_filename_tags(" - ".join(kwargs.values()))
         
     filepath = os.path.join(path, filename)
 
@@ -103,12 +100,12 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
 
     def extract_image(url):
         img_num = url[url.rfind("/") + 1:]
-        file_name = artist + " - " + str(img_id) + " - " + img_num
-        if __is_ai_art or 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags]:
-            filename = __set_ai_filename(filename)
-        pixiv_api.download(url, path=path, name = file_name)
-        print(str(img_num) + " saved to " + path + file_name)
-        __file_list[f"{artist} - {img_id}"] = path + file_name
+        # If art is tagged as AI but the -ai command wasn't used, add [AI] tag to file.
+        temp_tags = " [AI]" if 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags] and not ' [AI]' in __meta_tags else ""
+        filename = __add_filename_tags(artist + " - " + str(img_id) + " - " + img_num, temp_tags)
+        pixiv_api.download(url, path=path, name=filename)
+        print(filename + " saved to " + path + filename)
+        __file_list[f"{artist} - {img_id}"] = path + filename
 
     if any(pixiv_img.meta_pages):
         for img in pixiv_img.meta_pages:

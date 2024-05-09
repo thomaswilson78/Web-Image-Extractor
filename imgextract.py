@@ -56,7 +56,7 @@ def __get_urls_from_file(file):
 
     return urls
 
-def __get_extraction_data(lines:list[str]):
+def __get_url_data(lines:list[str]):
     """Pulls urls and url related meta-data needed to extract files."""
     # Ensure urls are properly useable by removing list indexes, new lines and the "www." prefix
     lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
@@ -100,28 +100,21 @@ def __get_extraction_data(lines:list[str]):
     return img_data
 
 
-async def extract_from_file(file, is_ai_art):
-    """Extracts images/videos from the list of urls in file provided."""
-    # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
-    if not await extract(__get_extraction_data(__get_urls_from_file(file)), is_ai_art):
-        print("Extraction complete. See output for errors.")
-    else:
-        if not IS_DEBUG:
-            print("Extraction complete. No issues encountered, removing file.")
-            os.remove(file)
-        else:
-            print("DEBUG: Extraction complete. File kept for testing.")
+async def extract_urls(location, is_ai_art, is_no_scan):
+    """Extracts images/videos from url or file containing list of urls provided."""
+    is_file = os.path.isfile(location)
+    data = __get_url_data(__get_urls_from_file(location)) if is_file else __get_url_data([location])
 
-
-async def extract_from_url(url, is_ai_art):
-    """Extracts image/video from a url provided."""
-    if not await extract(__get_extraction_data([url]), is_ai_art):
-        print("Extraction failed. See output for errors.")
+    if not await extract_images(data, is_ai_art, is_no_scan):
+        print("Extraction completed with errors. See output.")
     else:
+        if is_file and not IS_DEBUG:
+            print("No issues encountered. Removing file...")
+            os.remove(location)
         print("Extraction complete.")
 
 
-async def extract(img_data, is_ai_art):
+async def extract_images(img_data, is_ai_art, is_no_scan):
     site_set = {site for site, _, _, _ in img_data}
     if "pixiv.net" in site_set:
         set_pixiv_refresh_token()
@@ -131,8 +124,7 @@ async def extract(img_data, is_ai_art):
             exit()
         await twt_api.pool.login_all()
 
-    if is_ai_art:
-        pcloud.set_ai_art()
+    pcloud.set_tags(is_ai_art, is_no_scan)
 
     no_errors = True
     pix_response = None
@@ -187,7 +179,7 @@ async def extract(img_data, is_ai_art):
 
 
 async def iqdb(file):
-    img_data = __get_extraction_data(__get_urls_from_file(file))
+    img_data = __get_url_data(__get_urls_from_file(file))
 
     current_directory = os.getcwd()
     service = webdriver.ChromeService(executable_path=rf"{current_directory}/chromedriver")
@@ -206,7 +198,7 @@ async def iqdb(file):
         driver.get("https://iqdb.org/")
         
         driver.implicitly_wait(5)
-        #To make traffic look less suspect and to not overwhelm servers and potentially get banned.
+        #To not overwhelm servers as well as make traffic look less suspect and potentially get banned.
         time.sleep(round(random.uniform(3.000, 5.999), 2))
 
         url_text_box = driver.find_element(by=By.ID, value="url")

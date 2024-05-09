@@ -34,20 +34,14 @@ async def remove_twitter_account(username):
 
 
 @click.command()
-@click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.argument("location")
 @click.option("-ai", "--ai_art", is_flag=True, default=False, 
               help="Indicated if arts is AI generated.")
-async def extract(file, ai_art):
+@click.option("-n", "--no_scan", is_flag=True, default=False, 
+              help="Indicated if arts is AI generated.")
+async def extract(location, ai_art, no_scan):
     """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
-    await imgextract.extract_from_file(file, ai_art)
-
-
-@click.command()
-@click.argument("url")
-@click.option("-ai", "--ai_art", is_flag=True, default=False, 
-              help="Indicated if arts is AI generated.")
-async def extract_url(url:str, ai_art):
-    await imgextract.extract_from_url(url, ai_art)
+    await imgextract.extract_urls(location, ai_art, no_scan)
 
 
 @click.command()
@@ -58,7 +52,6 @@ async def iqdb(file):
 
 
 commands.add_command(extract)
-commands.add_command(extract_url)
 commands.add_command(add_twitter_account)
 commands.add_command(remove_twitter_account)
 commands.add_command(iqdb)
