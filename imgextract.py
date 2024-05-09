@@ -22,6 +22,7 @@ elif sys.platform == "win32":
 
 import danbooru
 
+IS_DEBUG = hasattr(sys, 'gettrace') and sys.gettrace() is not None 
 
 pixiv_api = pixivpy3.AppPixivAPI()
 twt_api = twscrape.API()
@@ -42,29 +43,28 @@ def set_pixiv_refresh_token():
     return new_token
 
 
-def __extract_data_from_file(file):
-    """Exact urls from file"""
+def __get_urls_from_file(file):
+    """Exact urls from file."""
     extension = os.path.splitext(file)[1]
     if not extension == ".txt":
         raise Exception("Incorrect file format.")
 
-    lines = open(file).readlines()
+    urls = open(file).readlines()
 
-    if not any(lines):
+    if not any(urls):
         raise Exception("Empty file.")
 
-    return __extract_urls(lines)
+    return urls
 
-def __extract_urls(lines:list[str]):
-    """Properly format and extract url and url related meta-data."""
+def __get_extraction_data(lines:list[str]):
+    """Pulls urls and url related meta-data needed to extract files."""
     # Ensure urls are properly useable by removing list indexes, new lines and the "www." prefix
     lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
     img_data = []
-    pixiv_auth_set = False
     for url in lines:
         parsed_url = urlparse.urlparse(url)
-        # NOTE: path starts with "/" so you'll need to account for an extra item in the list
+        # NOTE: path starts with "/" so you'll need to account for an extra item at the start of the list
         split_path = parsed_url.path.split("/")
 
         match parsed_url.hostname:
@@ -76,9 +76,6 @@ def __extract_urls(lines:list[str]):
                 # account @ 1, id @ 3: /{account}/status/{tweet_id}
                 img_data.append((parsed_url.hostname, split_path[1], split_path[3], url))
             case "pixiv.net":
-                if not pixiv_auth_set:
-                    set_pixiv_refresh_token()
-                    pixiv_auth_set = True
                 # Make sure the URL is to the image
                 if parsed_url.path.find("/artworks/") < 0:
                     print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
@@ -91,11 +88,8 @@ def __extract_urls(lines:list[str]):
                     print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
                     continue
                 # id @ 2: /post/{post_id}
-                post_id = split_path[2]
                 # Ensure that if any parameters were in the url that they're removed.
-                index = post_id.find("?")
-                if index > 0:
-                    post_id = post_id[:index]
+                post_id = split_path[2][:split_path[2].find("?")]
                 img_data.append((parsed_url.hostname, "", post_id, url)) 
             case _:
                 if not any([url.endswith(format) for format in file_formats]):
@@ -103,114 +97,88 @@ def __extract_urls(lines:list[str]):
                     continue
                 img_data.append((parsed_url.hostname, "", None, url))
 
-
     return img_data
 
 
-def __fav_danbooru(site, img_id):
-    dan_found = False
-
-    if site == "danbooru.donmai.us":
-        dan_api.add_favorite(img_id)
-        print(f"Favorited {img_id}.")
-        dan_found = True
-    else:
-        params = {}
-        if site == "pixiv.net": # Pixiv for some reason has its own separate tag
-            params = {"tags": f"pixiv:{img_id}"}
-        else:
-            params = {"tags": f"source:*{site}*{img_id}"}
-
-        json_data = dan_api.get_posts(params)
-
-        dan_found = any(json_data)
-        
-        if dan_found:
-            for item in json_data:
-                # If art is attached to a banned artist, then ignore it because it's blocked and cannot be viewed.
-                if item['is_banned']:
-                    print(f"{Fore.YELLOW}{img_id}: Danbooru lists {item['id']} as made by a banned artist. Defaulting to saving locally.{Style.RESET_ALL}")
-                    return False
-                dan_api.add_favorite(item["id"])
-                print(f"Favorited {img_id} to post {item['id']}.")
-
-    return dan_found
-
-
-async def __extract_images(site, img_id, url):
-    match site:
-        case "twitter.com":
-            tw_response = await twt_api.tweet_details(int(img_id))
-            for image in tw_response.media.photos:
-                # make sure image is at max resolution
-                url = image.url + "?name=4096x4096"
-                filename = image.url[image.url.rfind('/') + 1:]
-                pcloud.save_pcloud_twitter(img_id, tw_response.user.username, url, filename)
-            for video in tw_response.media.videos:
-                vid:twscrape.MediaVideoVariant = max(video.variants, key=attrgetter("bitrate"))
-                filename = vid.url[vid.url.rfind('/') + 1:vid.url.rfind('?')]
-                pcloud.save_pcloud_twitter(img_id, tw_response.user.username, vid.url, filename)
-            for animation in tw_response.media.animated:
-                url = animation.videoUrl
-                filename = url[url.rfind('/') + 1:]
-                pcloud.save_pcloud_twitter(img_id, tw_response.user.username, url, filename)
-        case "pixiv.net" | "www.pixiv.net":
-            pix_response = pixiv_api.illust_detail(img_id)
-            if any(pix_response) and any(pix_response.illust):
-                pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
-        case _:
-            pcloud.save_pcloud_other(site, url)
-
-
 async def extract_from_file(file, is_ai_art):
-    img_data = __extract_data_from_file(file)
-
+    """Extracts images/videos from the list of urls in file provided."""
     # Keep the file if errors were encountered, but if everything went smoothly then delete the file since it's no longer needed.
-    if not await extract(img_data, is_ai_art):
+    if not await extract(__get_extraction_data(__get_urls_from_file(file)), is_ai_art):
         print("Extraction complete. See output for errors.")
     else:
-        print("Extraction complete. No issues encountered, removing file.")
-        os.remove(file)
+        if not IS_DEBUG:
+            print("Extraction complete. No issues encountered, removing file.")
+            os.remove(file)
+        else:
+            print("DEBUG: Extraction complete. File kept for testing.")
 
 
 async def extract_from_url(url, is_ai_art):
-    img_data = __extract_urls([url])
-
-    if not await extract(img_data, is_ai_art):
+    """Extracts image/video from a url provided."""
+    if not await extract(__get_extraction_data([url]), is_ai_art):
         print("Extraction failed. See output for errors.")
     else:
         print("Extraction complete.")
 
 
 async def extract(img_data, is_ai_art):
-    if not any(await twt_api.pool.get_all()):
-        print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
-        exit()
-
-    await twt_api.pool.login_all()
+    site_set = {site for site, _, _, _ in img_data}
+    if "pixiv.net" in site_set:
+        set_pixiv_refresh_token()
+    if "twitter.com" in site_set:
+        if not any(await twt_api.pool.get_all()):
+            print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
+            exit()
+        await twt_api.pool.login_all()
 
     if is_ai_art:
         pcloud.set_ai_art()
 
     no_errors = True
+    pix_response = None
     for site, artist, img_id, url in img_data:
         try:
-            dan_found = False 
-            if not is_ai_art and not img_id is None:
-                if pcloud.file_exists(artist, img_id):
-                    continue
+            # Danbooru only needs to add to favorites using the DanbooruAPI tool, all others will extract the image to save locally
+            if site != "danbooru.donmai.us":
+                if site == "pixiv.net":
+                    pix_response = pixiv_api.illust_detail(img_id)
+                    if any(pix_response) and any(pix_response.illust):
+                        artist = pix_response.illust.user.account
+                    else:
+                        print(f"{Fore.YELLOW}Invalid pixiv repsonse.{Style.RESET_ALL}")
+                        continue
 
-                dan_found = __fav_danbooru(site, img_id)
-                # Force saving locally if artist part of a collection
-                if artist in pcloud.artist_directories:
-                    dan_found = False 
-            else:
-                filename = url[str.rfind(url, "/")+1:]
-                if pcloud.file_exists(site, filename):
+                # First clause handles Twitter and Pixiv, second handles all other cases
+                fieldA, fieldB = (artist, img_id) if not img_id is None else (site, url[str.rfind(url, "/") + 1:])
+                if pcloud.file_exists(fieldA, fieldB):
+                    print(f"{Fore.YELLOW}{fieldA} - {fieldB} already exists.{Style.RESET_ALL}")
                     continue
                     
-            if not dan_found:
-                await __extract_images(site, img_id, url)
+            match site:
+                case "danbooru.donmai.us":
+                    dan_api.add_favorite(img_id)
+                    print(f"Favorited {img_id}.")
+                case "twitter.com":
+                    tw_response = await twt_api.tweet_details(int(img_id))
+                    for image in tw_response.media.photos:
+                        # make sure image is at max possible resolution
+                        url = image.url + "?name=4096x4096"
+                        filename = image.url[image.url.rfind('/') + 1:]
+                        pcloud.save_pcloud(url, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
+                    for video in tw_response.media.videos:
+                        vid:twscrape.MediaVideoVariant = max(video.variants, key=attrgetter("bitrate"))
+                        filename = vid.url[vid.url.rfind('/') + 1:vid.url.rfind('?')]
+                        pcloud.save_pcloud(vid.url, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
+                    for animation in tw_response.media.animated:
+                        url = animation.videoUrl
+                        filename = url[url.rfind('/') + 1:]
+                        pcloud.save_pcloud(url, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
+                case "pixiv.net" | "www.pixiv.net":
+                    pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
+                case _:
+                    filename = url[str.rfind(url, "/") + 1:]
+                    pcloud.save_pcloud(url, site=site, filename=filename)
+
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
             no_errors = False
@@ -219,13 +187,13 @@ async def extract(img_data, is_ai_art):
 
 
 async def iqdb(file):
-    img_data = __extract_data_from_file(file)
+    img_data = __get_extraction_data(__get_urls_from_file(file))
 
     current_directory = os.getcwd()
     service = webdriver.ChromeService(executable_path=rf"{current_directory}/chromedriver")
 
     options = webdriver.ChromeOptions()
-    options.add_experimental_option("detach", True)
+    options.add_experimental_option("detach", True) # Need this to keep the window open after task finishes
 
     ext_path = f"{current_directory}/Extensions/"
     for ext in os.listdir(ext_path):
@@ -238,7 +206,8 @@ async def iqdb(file):
         driver.get("https://iqdb.org/")
         
         driver.implicitly_wait(5)
-        time.sleep(random.uniform(.4, .7))
+        #To make traffic look less suspect and to not overwhelm servers and potentially get banned.
+        time.sleep(round(random.uniform(3.000, 5.999), 2))
 
         url_text_box = driver.find_element(by=By.ID, value="url")
         submit_button = driver.find_element(by=By.CSS_SELECTOR, value="input[type='submit']")
@@ -246,12 +215,10 @@ async def iqdb(file):
         url_text_box.send_keys(url)
         submit_button.click()
 
-        #To make traffic looks less suspect and to not overwhelm servers and potentially get banned.
-        time.sleep(round(random.uniform(4.000, 6.999), 2))
-
     for site, _, img_id, url in img_data:
         try:
-            driver.switch_to.new_window('tab')
+            if url != img_data[0][3]:
+                driver.switch_to.new_window('tab')
             driver.get(url)
 
             match site:

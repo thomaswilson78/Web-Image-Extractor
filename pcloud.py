@@ -39,14 +39,10 @@ def get_file_list() -> dict[str:str]:
 __file_list = get_file_list()
 
 
-def file_exists(artist,id):
+def file_exists(fieldA, fieldB):
     """Checks to ensure no repeat files in the entire image folder."""
     # This method is way more accurate and faster. This way we check ALL directories, not just the one being saved to.
-    file = f"{artist} - {id}"
-    exists =  file in __file_list 
-    if exists:
-        print(f"{Fore.YELLOW}{__file_list[file]} already exists.{Style.RESET_ALL}")
-    return exists
+    return f"{fieldA} - {fieldB}" in __file_list 
 
 
 def set_artist_dir(directory) -> dict[str:str]:
@@ -68,39 +64,47 @@ ai_art_directories:set[str] = os.listdir(__ai_art_path) # These are named 1:1, d
 
 def set_path(artist):
     path = __default_path
-    if artist in artist_directories:
-        path = __artist_path + artist_directories[artist] + "/"
-    elif artist in ai_art_directories:
-        path = __ai_art_path + artist + "/"
+    if artist != "":
+        if artist in artist_directories:
+            path = __artist_path + artist_directories[artist] + "/"
+        elif artist in ai_art_directories:
+            path = __ai_art_path + artist + "/"
     
     return path
 
 
-def save_pcloud_twitter(img_id, artist, url, filename):
+def save_pcloud(url, **kwargs):
+    artist = ""
+    if "artist" in kwargs:
+        artist = kwargs["artist"]
+
     path = set_path(artist)
+    filename = " - ".join(kwargs.values())
 
     if __is_ai_art:
         filename = __set_ai_filename(filename)
+        
+    filepath = os.path.join(path, filename)
 
-    filepath = path + artist + " - " + str(img_id) + " - " + filename
-    urllib.request.urlretrieve(url, filepath)
-    __file_list[f"{artist} - {img_id}"] = filepath
-    print(str(img_id) + " saved to " + filepath)
+    r = requests.get(url)
+    with open(filepath, 'wb') as outfile:
+        outfile.write(r.content)
+    values = [ value for _, value in kwargs.items()][0:2]
+    __file_list[f"{' - '.join(values)}"] = filepath
+
+    print(str(filename) + " saved to " + filepath)
 
 
 def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
+    # Pixiv is unfortunately bitchy and doesn't like images being pulled off their website, so the API has to do it.
     img_id = pixiv_img.id
     artist = pixiv_img.user.account
-        
-    if file_exists(artist, img_id):
-        return
-
     path = set_path(artist)
 
     def extract_image(url):
         img_num = url[url.rfind("/") + 1:]
         file_name = artist + " - " + str(img_id) + " - " + img_num
-        if __is_ai_art:
+        if __is_ai_art or 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags]:
             filename = __set_ai_filename(filename)
         pixiv_api.download(url, path=path, name = file_name)
         print(str(img_num) + " saved to " + path + file_name)
@@ -111,17 +115,3 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
             extract_image(img.image_urls.original)
     elif not pixiv_img.meta_single_page is None:
         extract_image(pixiv_img.meta_single_page.original_image_url)
-
-
-def save_pcloud_other(site, url):
-    filename = site + " - " + url[str.rfind(url, "/")+1:]
-    if __is_ai_art:
-        filename = __set_ai_filename(filename)
-        
-    filepath = os.path.join(__default_path, filename)
-
-    r = requests.get(url)
-    with open(filepath, 'wb') as outfile:
-        outfile.write(r.content)
-
-    print(str(filename) + " saved to " + filepath)
