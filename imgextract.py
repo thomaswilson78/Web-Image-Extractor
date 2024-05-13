@@ -88,8 +88,8 @@ def __get_url_data(lines:list[str]):
                     print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
                     continue
                 # id @ 2: /post/{post_id}
-                # Ensure that if any parameters were in the url that they're removed.
-                post_id = split_path[2][:split_path[2].find("?")]
+                # Only pull ID, remove url queries (anything after ?) if exists.
+                post_id = split_path[2][:split_path[2].find("?")+1] if split_path[2].find("?") > 0 else split_path[2]
                 img_data.append((parsed_url.hostname, "", post_id, url)) 
             case _:
                 if not any([url.endswith(format) for format in file_formats]):
@@ -142,8 +142,9 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
 
                 # First clause handles Twitter and Pixiv, second handles all other cases
                 fieldA, fieldB = (artist, img_id) if not img_id is None else (site, url[str.rfind(url, "/") + 1:])
-                if pcloud.file_exists(fieldA, fieldB):
-                    print(f"{Fore.YELLOW}{fieldA} - {fieldB} already exists.{Style.RESET_ALL}")
+                check_file = f"{fieldA} - {fieldB}"
+                if pcloud.file_exists(check_file):
+                    print(f"{Fore.YELLOW}{check_file} already exists: {pcloud.get_file_location(check_file)}{Style.RESET_ALL}")
                     continue
                     
             match site:
@@ -240,3 +241,15 @@ async def iqdb(file):
             print(e)
 
     print("Done.")
+
+    while True:
+        input_val = input(f"Delete file? (y/n)").lower()
+        match input_val:
+            case "y":
+                os.remove(file)
+                print("File deleted.")
+                break
+            case "n":
+                break
+            case _:
+                print("Invalid input.")

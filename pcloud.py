@@ -31,18 +31,22 @@ def __add_filename_tags(filename:str, temp_tags:str = "") -> str:
 
 
 def get_file_list() -> dict[str:str]:
-    """Pulls all files that use the extraction naming convention -> {uploader/artist} - {location/status} - {image_id}"""
+    """Pulls all files that use the extraction naming convention i.e. artist - status_id - filename, site - filename, etc."""
     all_files = [f"{dir}/{f}" for dir, _, files in os.walk(__pcloud_path+"Images") for f in files]
     filtered_files:list[str] = list(filter(lambda f: re.match("/.+ - .+\..+", f), all_files))
     return {f"{os.path.basename(f.split(' - ')[0])} - {f.split(' - ')[1]}":f for f in filtered_files}
 
-__file_list = get_file_list()
+
+def get_file_location(file:str) -> str:
+    return __file_list[file]
 
 
-def file_exists(fieldA, fieldB):
+def file_exists(file):
     """Checks to ensure no repeat files in the entire image folder."""
     # This method is way more accurate and faster. This way we check ALL directories, not just the one being saved to.
-    return f"{fieldA} - {fieldB}" in __file_list 
+    return file in __file_list 
+
+__file_list = get_file_list()
 
 
 def set_artist_dir(directory) -> dict[str:str]:
@@ -63,14 +67,16 @@ ai_art_directories:set[str] = os.listdir(__ai_art_path) # These are named 1:1, d
 
 
 def set_path(artist):
+    is_ai_art = False
     path = __default_path
     if artist != "":
         if artist in artist_directories:
             path = __artist_path + artist_directories[artist] + "/"
         elif artist in ai_art_directories:
+            is_ai_art = True
             path = __ai_art_path + artist + "/"
     
-    return path
+    return (path, is_ai_art)
 
 
 def save_pcloud(url, **kwargs):
@@ -78,9 +84,9 @@ def save_pcloud(url, **kwargs):
     if "artist" in kwargs:
         artist = kwargs["artist"]
 
-    path = set_path(artist)
-    filename = __add_filename_tags(" - ".join(kwargs.values()))
-        
+    path, is_ai_art = set_path(artist)
+    temp_tags = " [AI]" if is_ai_art and not ' [AI]' in __meta_tags else ""
+    filename = __add_filename_tags(" - ".join(kwargs.values()), temp_tags)
     filepath = os.path.join(path, filename)
 
     r = requests.get(url)
@@ -96,12 +102,20 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
     # Pixiv is unfortunately bitchy and doesn't like images being pulled off their website, so the API has to do it.
     img_id = pixiv_img.id
     artist = pixiv_img.user.account
-    path = set_path(artist)
+    path, is_ai_art = set_path(artist)
+    
+    # If art is tagged as AI but the -ai command wasn't used, add [AI] tag to file.
+    def set_temp_tag_ai() -> str:
+        if ' [AI]' in __meta_tags:
+            return ""
+        if is_ai_art or 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags]:
+            return " [AI]"
+
+        return ""
 
     def extract_image(url):
         img_num = url[url.rfind("/") + 1:]
-        # If art is tagged as AI but the -ai command wasn't used, add [AI] tag to file.
-        temp_tags = " [AI]" if 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags] and not ' [AI]' in __meta_tags else ""
+        temp_tags = set_temp_tag_ai()
         filename = __add_filename_tags(artist + " - " + str(img_id) + " - " + img_num, temp_tags)
         pixiv_api.download(url, path=path, name=filename)
         print(filename + " saved to " + path + filename)
