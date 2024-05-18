@@ -32,15 +32,25 @@ dan_api = danbooru.API()
 file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".webm"]
 
 
-# Pixiv refresh tokens expire, needs to be periodically updated
+# Pixiv has two tokens, refresh and access, the latter needs to be periodically updated
 def set_pixiv_refresh_token():
     """Update Pixiv access token."""
-    old_token = os.getenv("PIXIV_REFRESH_TOKEN")
-    new_token = pixiv_auth.refresh(old_token)
-    os.environ["PIXIV_REFRESH_TOKEN"] = new_token
+    refresh_token = os.getenv("PIXIV_REFRESH_TOKEN")
+    new_token = pixiv_auth.refresh(refresh_token)
     pixiv_api.auth(refresh_token=new_token)
 
     return new_token
+
+
+async def initialize_api_services(img_data):
+    site_set = {site for site, _, _, _ in img_data}
+    if "pixiv.net" in site_set:
+        set_pixiv_refresh_token()
+    if "twitter.com" or "x.com" in site_set:
+        if not any(await twt_api.pool.get_all()):
+            print(f"{Fore.RED}No Twitter(X) accounts provided. Add them by using the \"add-twitter-account\" command.")
+            exit()
+        await twt_api.pool.login_all()
 
 
 def __get_urls_from_file(file):
@@ -68,7 +78,7 @@ def __get_url_data(lines:list[str]):
         split_path = parsed_url.path.split("/")
 
         match parsed_url.hostname:
-            case "twitter.com":
+            case "twitter.com" | "x.com":
                 # Make sure the URL is to a status, not to home, search, etc.
                 if parsed_url.path.find("/status/") < 0:
                     print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
@@ -115,14 +125,7 @@ async def extract_urls(location, is_ai_art, is_no_scan):
 
 
 async def extract_images(img_data, is_ai_art, is_no_scan):
-    site_set = {site for site, _, _, _ in img_data}
-    if "pixiv.net" in site_set:
-        set_pixiv_refresh_token()
-    if "twitter.com" in site_set:
-        if not any(await twt_api.pool.get_all()):
-            print(f"{Fore.RED}No Twitter accounts provided. Add them by using the \"add-twitter-account\" command.")
-            exit()
-        await twt_api.pool.login_all()
+    await initialize_api_services(img_data)
 
     pcloud.set_tags(is_ai_art, is_no_scan)
 
@@ -140,7 +143,7 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
                         print(f"{Fore.YELLOW}Invalid pixiv repsonse.{Style.RESET_ALL}")
                         continue
 
-                # First clause handles Twitter and Pixiv, second handles all other cases
+                # First clause handles Twitter(X) and Pixiv, second handles all other cases
                 fieldA, fieldB = (artist, img_id) if not img_id is None else (site, url[str.rfind(url, "/") + 1:])
                 check_file = f"{fieldA} - {fieldB}"
                 if pcloud.file_exists(check_file):
@@ -151,7 +154,7 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
                 case "danbooru.donmai.us":
                     dan_api.add_favorite(img_id)
                     print(f"Favorited {img_id}.")
-                case "twitter.com":
+                case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
                     for image in tw_response.media.photos:
                         # make sure image is at max possible resolution
@@ -181,6 +184,8 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
 
 async def iqdb(file):
     img_data = __get_url_data(__get_urls_from_file(file))
+
+    await initialize_api_services(img_data)
 
     current_directory = os.getcwd()
     service = webdriver.ChromeService(executable_path=rf"{current_directory}/chromedriver")
@@ -217,7 +222,7 @@ async def iqdb(file):
             match site:
                 case "danbooru.donmai.us":
                     continue
-                case "twitter.com":
+                case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
                     for image in tw_response.media.photos:
                         image_url = image.url + "?name=small" # Small should suffice and uses less bandwidth
@@ -243,7 +248,7 @@ async def iqdb(file):
     print("Done.")
 
     while True:
-        input_val = input(f"Delete file? (y/n)").lower()
+        input_val = input(f"Delete file? (y/n): ").lower()
         match input_val:
             case "y":
                 os.remove(file)
