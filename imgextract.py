@@ -48,7 +48,7 @@ async def initialize_api_services(img_data):
         set_pixiv_refresh_token()
     if "twitter.com" or "x.com" in site_set:
         if not any(await twt_api.pool.get_all()):
-            print(f"{Fore.RED}No Twitter(X) accounts provided. Add them by using the \"add-twitter-account\" command.")
+            print(f"{Fore.RED}No Twitter(X) accounts provided. Add them by using the \"add-twitter-account\" command.{Style.RESET_ALL}")
             exit()
         await twt_api.pool.login_all()
 
@@ -188,7 +188,8 @@ async def iqdb(file):
     await initialize_api_services(img_data)
 
     current_directory = os.getcwd()
-    service = webdriver.ChromeService(executable_path=rf"{current_directory}/chromedriver")
+    driver = "chromedriver" + ".exe" if sys.platform == "win32" else ""
+    service = webdriver.ChromeService(executable_path=rf"{current_directory}/{driver}")
 
     options = webdriver.ChromeOptions()
     options.add_experimental_option("detach", True) # Need this to keep the window open after task finishes
