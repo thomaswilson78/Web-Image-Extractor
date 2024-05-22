@@ -18,7 +18,7 @@ from operator import attrgetter
 if sys.platform == "linux":
     sys.path.append(os.path.expanduser("~/pCloudDrive/repos/DanbooruAPI/"))
 elif sys.platform == "win32":
-    sys.path.append("P:/repos/DanbooruAPI")
+    sys.path.append("P:\\repos\\DanbooruAPI")
 
 import danbooru
 
@@ -188,7 +188,7 @@ async def iqdb(file):
     await initialize_api_services(img_data)
 
     current_directory = os.getcwd()
-    driver = "chromedriver" + ".exe" if sys.platform == "win32" else ""
+    driver = "chromedriver" + (".exe" if sys.platform == "win32" else "")
     service = webdriver.ChromeService(executable_path=rf"{current_directory}/{driver}")
 
     options = webdriver.ChromeOptions()
