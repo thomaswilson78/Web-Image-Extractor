@@ -124,6 +124,10 @@ async def extract_urls(location, is_ai_art, is_no_scan):
         print("Extraction complete.")
 
 
+def get_yandere_id(url):
+    return url.split("%20")[1]
+
+
 async def extract_images(img_data, is_ai_art, is_no_scan):
     await initialize_api_services(img_data)
 
@@ -144,7 +148,12 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
                         continue
 
                 # First clause handles Twitter(X) and Pixiv, second handles all other cases
-                fieldA, fieldB = (artist, img_id) if not img_id is None else (site, url[str.rfind(url, "/") + 1:])
+                if not img_id is None:
+                    fieldA, fieldB = (artist, img_id) 
+                elif url.find("yande.re") >= 0:
+                    fieldA, fieldB = (site, get_yandere_id(url))
+                else:
+                    fieldA, fieldB = (site, url[str.rfind(url, "/") + 1:])
                 check_file = f"{fieldA} - {fieldB}"
                 if pcloud.file_exists(check_file):
                     print(f"{Fore.YELLOW}{check_file} already exists: {pcloud.get_file_location(check_file)}{Style.RESET_ALL}")
@@ -172,7 +181,10 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
                 case "pixiv.net" | "www.pixiv.net":
                     pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
                 case _:
-                    filename = url[str.rfind(url, "/") + 1:]
+                    filename:str = url[str.rfind(url, "/") + 1:]
+                    if filename.find("yande.re") >= 0:
+                        img_id = get_yandere_id(url)
+                        filename = f"{img_id}{os.path.splitext(url)[1]}"
                     pcloud.save_pcloud(url, site=site, filename=filename)
 
         except Exception as e:
