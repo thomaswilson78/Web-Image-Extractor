@@ -20,9 +20,9 @@ __meta_tags = ""
 def set_tags(is_ai, is_noscan):
     global __meta_tags, __default_path
     if is_ai:
-        __meta_tags += " [AI]"
+        __meta_tags += " - [AI]"
     if is_noscan:
-        __meta_tags += " [NoScan]"
+        __meta_tags += " - [NoScan]"
     
 
 def __add_filename_tags(filename:str, temp_tags:str = "") -> str:
@@ -32,7 +32,7 @@ def __add_filename_tags(filename:str, temp_tags:str = "") -> str:
 
 def get_file_list() -> dict[str:str]:
     """Pulls all files that use the extraction naming convention i.e. artist - status_id - filename, site - filename, etc."""
-    all_files = [f"{os.path.join(dir,f)}" for dir, _, files in os.walk(__pcloud_path+"Images") for f in files]
+    all_files = [f"{os.path.join(dir,f)}" for dir, _, files in os.walk(__pcloud_path+"Images/_Need Sorted") for f in files]
     filtered_files:list[str] = list(filter(lambda f: re.match(".+ - .+\..+", f), all_files))
     return {f"{os.path.basename(f.split(' - ')[0])} - {f.split(' - ')[1]}":f for f in filtered_files}
 
