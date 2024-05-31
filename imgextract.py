@@ -6,6 +6,7 @@ import re
 import random
 import urllib.parse as urlparse
 import time
+from playsound import playsound
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import twscrape
@@ -258,6 +259,7 @@ async def iqdb(file):
         except Exception as e:
             print(e)
 
+    playsound("./assets/ping.wav")
     print("Done.")
 
     while True:
