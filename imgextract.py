@@ -219,7 +219,7 @@ async def iqdb(file):
         
         driver.implicitly_wait(5)
         #To not overwhelm servers as well as make traffic look less suspect and potentially get banned.
-        time.sleep(round(random.uniform(3.000, 5.999), 2))
+        time.sleep(round(random.uniform(2.500, 5.000), 2))
 
         url_text_box = driver.find_element(by=By.ID, value="url")
         submit_button = driver.find_element(by=By.CSS_SELECTOR, value="input[type='submit']")
@@ -267,6 +267,7 @@ async def iqdb(file):
         match input_val:
             case "y":
                 os.remove(file)
+                driver.quit()
                 print("File deleted.")
                 break
             case "n":
