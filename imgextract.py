@@ -70,7 +70,7 @@ def __get_urls_from_file(file):
 def __get_url_data(lines:list[str]):
     """Pulls urls and url related meta-data needed to extract files."""
     # Ensure urls are properly useable by removing list indexes, new lines and the "www." prefix
-    lines = [re.sub("^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
+    lines = [re.sub(r"^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
     img_data = []
     for url in lines:
