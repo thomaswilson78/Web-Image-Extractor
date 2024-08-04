@@ -32,6 +32,9 @@ dan_api = danbooru.API()
 
 file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".webm"]
 
+# Some file names by default are awful. This will be used to cut out everything but the ID.
+custom_filenames = {"files.yande.re":1, "konachan.com":2}
+
 
 # Pixiv has two tokens, refresh and access, the latter needs to be periodically updated
 def set_pixiv_refresh_token():
@@ -125,8 +128,8 @@ async def extract_urls(location, is_ai_art, is_no_scan):
         print("Extraction complete.")
 
 
-def get_yandere_id(url):
-    return url.split("%20")[1]
+def get_custom_id(url, idx):
+    return url.split("%20")[idx]
 
 
 async def extract_images(img_data, is_ai_art, is_no_scan):
@@ -151,8 +154,9 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
                 # First clause handles Twitter(X) and Pixiv, second handles all other cases
                 if not img_id is None:
                     fieldA, fieldB = (artist, img_id) 
-                elif url.find("yande.re") >= 0:
-                    fieldA, fieldB = (site, get_yandere_id(url))
+                elif site in custom_filenames:
+                    id_index = custom_filenames[site]
+                    fieldA, fieldB = (site, get_custom_id(url, id_index))
                 else:
                     fieldA, fieldB = (site, url[str.rfind(url, "/") + 1:])
                 check_file = f"{fieldA} - {fieldB}"
@@ -183,8 +187,8 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
                     pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
                 case _:
                     filename:str = url[str.rfind(url, "/") + 1:]
-                    if filename.find("yande.re") >= 0:
-                        img_id = get_yandere_id(url)
+                    if site in custom_filenames:
+                        img_id = get_custom_id(url, custom_filenames[site])
                         filename = f"{img_id}{os.path.splitext(url)[1]}"
                     pcloud.save_pcloud(url, site=site, filename=filename)
 
@@ -257,16 +261,31 @@ async def iqdb(file):
                 case _:
                     execute_web_driver(url)
         except Exception as e:
-            print(e)
+            print(f"{site} - {img_id}: {e}")
 
     playsound("./assets/ping.wav")
     print("Done.")
 
     while True:
-        input_val = input(f"Delete file? (y/n): ").lower()
+        input_val = input(f"Auto-extract urls?[Y/n]: ").lower()
         match input_val:
-            case "y":
-                os.remove(file)
+            case "y" | "":
+                try:
+                    extract_file = f"{current_directory}/temp.txt"
+                    if os.path.exists(extract_file):
+                        os.remove(extract_file)
+                    with open(extract_file, "+w") as fi:
+                        urls:list = []
+                        for handle in driver.window_handles:
+                            driver.switch_to.window(handle)
+                            urls.append(driver.current_url)
+                        fi.write("\n".join(urls))
+                        
+                    await extract_urls(extract_file, False, True)
+                    os.remove(file)
+                except Exception as e:
+                    print(f"Error Occurred: {e}")
+
                 driver.quit()
                 print("File deleted.")
                 break
