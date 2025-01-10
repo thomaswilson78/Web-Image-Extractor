@@ -72,6 +72,14 @@ def __get_urls_from_file(file):
 
 def __get_url_data(lines:list[str]):
     """Pulls urls and url related meta-data needed to extract files."""
+    # Ensures that URL is valid for image extraction by matching a keyword in the URL (i.e. Twitter -> "status", Danbooru -> "posts", etc.)
+    def invalid_url(keyword:str):
+        if parsed_url.path.find(keyword) < 0:
+            print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
+            return True
+        
+        return False
+            
     # Ensure urls are properly useable by removing list indexes, new lines and the "www." prefix
     lines = [re.sub(r"^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
@@ -83,23 +91,17 @@ def __get_url_data(lines:list[str]):
 
         match parsed_url.hostname:
             case "twitter.com" | "x.com":
-                # Make sure the URL is to a status, not to home, search, etc.
-                if parsed_url.path.find("/status/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
+                if invalid_url("/status/"):
                     continue
                 # account @ 1, id @ 3: /{account}/status/{tweet_id}
                 img_data.append((parsed_url.hostname, split_path[1], split_path[3], url))
             case "pixiv.net":
-                # Make sure the URL is to the image
-                if parsed_url.path.find("/artworks/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
+                if invalid_url("/artworks/"):
                     continue
                 # id @ 3: /{lang}/artworks/{illustration_id}
                 img_data.append((parsed_url.hostname, "", split_path[3], url)) 
             case "danbooru.donmai.us":
-                # Make sure the URL is to the image
-                if parsed_url.path.find("/posts/") < 0:
-                    print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
+                if invalid_url("/posts/"):
                     continue
                 # id @ 2: /post/{post_id}
                 # Only pull ID, remove url queries (anything after ?) if exists.
@@ -117,7 +119,8 @@ def __get_url_data(lines:list[str]):
 async def extract_urls(location, is_ai_art, is_no_scan):
     """Extracts images/videos from url or file containing list of urls provided."""
     is_file = os.path.isfile(location)
-    data = __get_url_data(__get_urls_from_file(location)) if is_file else __get_url_data([location])
+    # If file is local, pull urls from file. Otherwise treat "location" as a url.
+    data = __get_url_data(__get_urls_from_file(location) if is_file else [location])
 
     if not await extract_images(data, is_ai_art, is_no_scan):
         print("Extraction completed with errors. See output.")
@@ -200,6 +203,11 @@ async def extract_images(img_data, is_ai_art, is_no_scan):
 
 
 async def iqdb(file):
+    """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
+    # NOTE: Using chrome because it's the only one that allows the window to stay open after completing the job. However, 
+    # now that I've got this to auto-pull the urls from all open tabs, I might be able to go back to another browser.
+    # ALSO: I would like to implement some way to automatically pull the matching chromedriver version based on the current
+    # version of the browser. May also allow you to pick your browser as well rather than just using chrome.
     img_data = __get_url_data(__get_urls_from_file(file))
 
     await initialize_api_services(img_data)
@@ -223,7 +231,7 @@ async def iqdb(file):
         
         driver.implicitly_wait(5)
         #To not overwhelm servers as well as make traffic look less suspect and potentially get banned.
-        time.sleep(round(random.uniform(2.500, 5.000), 2))
+        time.sleep(round(random.uniform(2.500, 4.300), 2))
 
         url_text_box = driver.find_element(by=By.ID, value="url")
         submit_button = driver.find_element(by=By.CSS_SELECTOR, value="input[type='submit']")
@@ -271,11 +279,13 @@ async def iqdb(file):
         match input_val:
             case "y" | "":
                 try:
+                    # Create a local file to save the urls to.
                     extract_file = f"{current_directory}/temp.txt"
                     if os.path.exists(extract_file):
                         os.remove(extract_file)
                     with open(extract_file, "+w") as fi:
                         urls:list = []
+                        # Pull urls from chrome window
                         for handle in driver.window_handles:
                             driver.switch_to.window(handle)
                             urls.append(driver.current_url)
@@ -286,10 +296,11 @@ async def iqdb(file):
                 except Exception as e:
                     print(f"Error Occurred: {e}")
 
-                driver.quit()
                 print("File deleted.")
                 break
             case "n":
                 break
             case _:
                 print("Invalid input.")
+
+    driver.quit()
