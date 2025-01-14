@@ -37,11 +37,9 @@ async def remove_twitter_account(username):
 @click.argument("location")
 @click.option("-ai", "--ai_art", is_flag=True, default=False, 
               help="Indicated if arts is AI generated.")
-@click.option("-n", "--no_scan", is_flag=True, default=False, 
-              help="Tag with [NoScan], prevents file from being scanned via Saucenao API crontab job.")
-async def extract(location, ai_art, no_scan):
+async def extract(location, ai_art):
     """Pull image(s) from the Twitter/Danbooru and either adds them to favorites (if available) or downloads the image."""
-    await imgextract.extract_urls(location, ai_art, no_scan)
+    await imgextract.extract_urls(location, ai_art)
 
 
 @click.command()
