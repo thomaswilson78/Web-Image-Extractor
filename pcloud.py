@@ -17,12 +17,10 @@ __ai_art_path = __pcloud_path + "Images/Other/AI Art/_Collections/"
 __meta_tags = ""
 
 
-def set_tags(is_ai, is_noscan):
+def set_tags(is_ai):
     global __meta_tags, __default_path
     if is_ai:
         __meta_tags += " - [AI]"
-    if is_noscan:
-        __meta_tags += " - [NoScan]"
     
 
 def __add_filename_tags(filename:str, temp_tags:str = "") -> str:

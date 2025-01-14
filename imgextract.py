@@ -116,13 +116,13 @@ def __get_url_data(lines:list[str]):
     return img_data
 
 
-async def extract_urls(location, is_ai_art, is_no_scan):
+async def extract_urls(location, is_ai_art):
     """Extracts images/videos from url or file containing list of urls provided."""
     is_file = os.path.isfile(location)
     # If file is local, pull urls from file. Otherwise treat "location" as a url.
     data = __get_url_data(__get_urls_from_file(location) if is_file else [location])
 
-    if not await extract_images(data, is_ai_art, is_no_scan):
+    if not await extract_images(data, is_ai_art):
         print("Extraction completed with errors. See output.")
     else:
         if is_file and not IS_DEBUG:
@@ -135,10 +135,10 @@ def get_custom_id(url, idx):
     return url.split("%20")[idx]
 
 
-async def extract_images(img_data, is_ai_art, is_no_scan):
+async def extract_images(img_data, is_ai_art):
     await initialize_api_services(img_data)
 
-    pcloud.set_tags(is_ai_art, is_no_scan)
+    pcloud.set_tags(is_ai_art)
 
     no_errors = True
     pix_response = None
@@ -291,7 +291,7 @@ async def iqdb(file):
                             urls.append(driver.current_url)
                         fi.write("\n".join(urls))
                         
-                    await extract_urls(extract_file, False, True)
+                    await extract_urls(extract_file, False)
                     os.remove(file)
                 except Exception as e:
                     print(f"Error Occurred: {e}")
