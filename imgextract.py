@@ -202,28 +202,39 @@ async def extract_images(img_data, is_ai_art):
     return no_errors
 
 
-async def iqdb(file):
+async def iqdb(file, browser:str):
     """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
     # NOTE: Using chrome because it's the only one that allows the window to stay open after completing the job. However, 
     # now that I've got this to auto-pull the urls from all open tabs, I might be able to go back to another browser.
     # ALSO: I would like to implement some way to automatically pull the matching chromedriver version based on the current
     # version of the browser. May also allow you to pick your browser as well rather than just using chrome.
+    current_directory = os.getcwd()
+
+    match browser.lower():
+        case "chrome":
+            driver_file = "chromedriver" + (".exe" if sys.platform == "win32" else "")
+            service = webdriver.ChromeService(executable_path=rf"{current_directory}/{driver_file}")
+
+            # Formly used before tab collection/extraction was automated, now no longer needed since the browser will stay opened until extraction finishes.
+            # Only keeping this here for reference. Will likley never use this again.
+            # options = webdriver.ChromeOptions()
+            # options.add_experimental_option("detach", True) # Need this to keep the window open after task finishes
+
+            # ext_path = f"{current_directory}/Extensions/"
+            # for ext in os.listdir(ext_path):
+            #     options.add_extension(extension=rf"{ext_path}/{ext}")
+
+            #driver = webdriver.Chrome(options=options,service=service)
+            driver = webdriver.Chrome(service=service)
+        case "firefox":
+            driver = webdriver.Firefox(service=webdriver.FirefoxService())
+        case _:
+            raise Exception("Invalid browser defined.")
+
+
     img_data = __get_url_data(__get_urls_from_file(file))
 
     await initialize_api_services(img_data)
-
-    current_directory = os.getcwd()
-    driver = "chromedriver" + (".exe" if sys.platform == "win32" else "")
-    service = webdriver.ChromeService(executable_path=rf"{current_directory}/{driver}")
-
-    options = webdriver.ChromeOptions()
-    options.add_experimental_option("detach", True) # Need this to keep the window open after task finishes
-
-    ext_path = f"{current_directory}/Extensions/"
-    for ext in os.listdir(ext_path):
-        options.add_extension(extension=rf"{ext_path}/{ext}")
-
-    driver = webdriver.Chrome(options=options,service=service)
 
     def execute_web_driver(url):
         driver.switch_to.new_window('tab')

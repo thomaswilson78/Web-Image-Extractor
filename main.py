@@ -44,9 +44,11 @@ async def extract(location, ai_art):
 
 @click.command()
 @click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-async def iqdb(file):
+@click.option("-b", "--browser", type=click.STRING, default="Firefox", 
+              help="Specify browser to use. Options are Firefox (default) and Chrome.")
+async def iqdb(file, browser):
     """Check if iqdb can find image on imageboard sites."""
-    await imgextract.iqdb(file)
+    await imgextract.iqdb(file, browser)
 
 
 commands.add_command(extract)
