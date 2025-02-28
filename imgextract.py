@@ -29,14 +29,11 @@ pixiv_api = pixivpy3.AppPixivAPI()
 twt_api = twscrape.API()
 dan_api = danbooru.API()
 
-
-file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".webm"]
-
 # Some file names by default are awful. This will be used to cut out everything but the ID.
 custom_filenames = {"files.yande.re":1, "konachan.com":2}
 
 
-# Pixiv has two tokens, refresh and access, the latter needs to be periodically updated
+# Pixiv has two tokens, refresh and access, the latter needs to be periodically updated to access Pixiv and download images.
 def set_pixiv_refresh_token():
     """Update Pixiv access token."""
     refresh_token = os.getenv("PIXIV_REFRESH_TOKEN")
@@ -58,7 +55,6 @@ async def initialize_api_services(img_data):
 
 
 def __get_urls_from_file(file):
-    """Exact urls from file."""
     extension = os.path.splitext(file)[1]
     if not extension == ".txt":
         raise Exception("Incorrect file format.")
@@ -84,6 +80,8 @@ def __get_url_data(lines:list[str]):
     lines = [re.sub(r"^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
     img_data = []
+    file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".webm"]
+
     for url in lines:
         parsed_url = urlparse.urlparse(url)
         # NOTE: path starts with "/" so you'll need to account for an extra item at the start of the list
@@ -108,6 +106,7 @@ def __get_url_data(lines:list[str]):
                 post_id = split_path[2][:split_path[2].find("?")+1] if split_path[2].find("?") > 0 else split_path[2]
                 img_data.append((parsed_url.hostname, "", post_id, url)) 
             case _:
+                # Don't bother with non-media urls
                 if not any([url.endswith(format) for format in file_formats]):
                     print(f"{Fore.YELLOW}Url does not contain an image/video: {parsed_url.geturl()}{Style.RESET_ALL}")
                     continue
@@ -204,10 +203,11 @@ async def extract_images(img_data, is_ai_art):
 
 async def iqdb(file, browser:str):
     """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
-    # NOTE: Using chrome because it's the only one that allows the window to stay open after completing the job. However, 
-    # now that I've got this to auto-pull the urls from all open tabs, I might be able to go back to another browser.
-    # ALSO: I would like to implement some way to automatically pull the matching chromedriver version based on the current
-    # version of the browser. May also allow you to pick your browser as well rather than just using chrome.
+    # Extract data from URLs
+    img_data = __get_url_data(__get_urls_from_file(file))
+    await initialize_api_services(img_data)
+
+    # Setup selenium to work with selected browser and install any extensions/add-ons
     current_directory = os.getcwd()
 
     match browser.lower():
@@ -215,33 +215,31 @@ async def iqdb(file, browser:str):
             driver_file = "chromedriver" + (".exe" if sys.platform == "win32" else "")
             service = webdriver.ChromeService(executable_path=rf"{current_directory}/{driver_file}")
 
-            # Formly used before tab collection/extraction was automated, now no longer needed since the browser will stay opened until extraction finishes.
-            # Only keeping this here for reference. Will likley never use this again.
-            # options = webdriver.ChromeOptions()
+            options = webdriver.ChromeOptions()
+            # Formly used before tab collection/extraction was automated, now no longer needed since the browser will stay opened 
+            # until extraction finishes. Only keeping this here for reference. Will likley never use this again.
             # options.add_experimental_option("detach", True) # Need this to keep the window open after task finishes
 
-            # ext_path = f"{current_directory}/Extensions/"
-            # for ext in os.listdir(ext_path):
-            #     options.add_extension(extension=rf"{ext_path}/{ext}")
+            ext_path = f"{current_directory}/Extensions/Chrome/"
+            for ext in os.listdir(ext_path):
+                options.add_extension(extension=rf"{ext_path}/{ext}")
 
-            #driver = webdriver.Chrome(options=options,service=service)
-            driver = webdriver.Chrome(service=service)
+            driver = webdriver.Chrome(options=options,service=service)
         case "firefox":
             driver = webdriver.Firefox(service=webdriver.FirefoxService())
+            ext_path = f"{current_directory}/Extensions/Firefox/"
+            for ext in os.listdir(ext_path):
+                 driver.install_addon(path=rf"{ext_path}/{ext}")
         case _:
             raise Exception("Invalid browser defined.")
 
+    driver.implicitly_wait(180)
 
-    img_data = __get_url_data(__get_urls_from_file(file))
-
-    await initialize_api_services(img_data)
-
-    def execute_web_driver(url):
+    def iqdb_lookup(url):
         driver.switch_to.new_window('tab')
         driver.get("https://iqdb.org/")
         
-        driver.implicitly_wait(5)
-        #To not overwhelm servers as well as make traffic look less suspect and potentially get banned.
+        #To not overwhelm servers as well as make traffic look less suspect to avoid being banned.
         time.sleep(round(random.uniform(2.500, 4.300), 2))
 
         url_text_box = driver.find_element(by=By.ID, value="url")
@@ -261,24 +259,33 @@ async def iqdb(file, browser:str):
                     continue
                 case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
+                    if "aiart" in tw_response.user.displayname.lower():
+                        continue
+                    
                     for image in tw_response.media.photos:
                         image_url = image.url + "?name=small" # Small should suffice and uses less bandwidth
-                        execute_web_driver(image_url)
+                        iqdb_lookup(image_url)
                 case "pixiv.net" | "www.pixiv.net":
                     pix_response = pixiv_api.illust_detail(img_id)
                     if any(pix_response) and any(pix_response.illust):
                         pixiv_img = pix_response.illust
                         # Skip AI images
-                        if 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags]:
+                        if pixiv_img.illust_ai_type == 2:
                             continue
 
                         if any(pixiv_img.meta_pages): # Multi Image
                             for img in pixiv_img.meta_pages:
-                                execute_web_driver(img.image_urls.medium)
+                                iqdb_lookup(img.image_urls.medium)
                         else: # Single Image
-                            execute_web_driver(pixiv_img.image_urls.medium)
+                            # Try Danbooru first to save time. If we get a hit, open a tab for them instead.
+                            dan_response = dan_api.get_posts({"tags":f"pixiv:{img_id}"})
+                            if any(dan_response):
+                                driver.switch_to.new_window('tab')
+                                driver.get(f"https://danbooru.donmai.us/posts/{dan_response[0]["id"]}")
+                            else:
+                                iqdb_lookup(pixiv_img.image_urls.medium)
                 case _:
-                    execute_web_driver(url)
+                    iqdb_lookup(url)
         except Exception as e:
             print(f"{site} - {img_id}: {e}")
 
@@ -286,22 +293,24 @@ async def iqdb(file, browser:str):
     print("Done.")
 
     while True:
-        input_val = input(f"Auto-extract urls?[Y/n]: ").lower()
+        # This is more a formality. Let's me go through everything first before I let it auto-extract.
+        input_val = input(f"Auto-extract tabs?[Y/n]: ").lower()
         match input_val:
             case "y" | "":
                 try:
-                    # Create a local file to save the urls to.
+                    # Create a temporary local file to save the urls to.
                     extract_file = f"{current_directory}/temp.txt"
                     if os.path.exists(extract_file):
                         os.remove(extract_file)
                     with open(extract_file, "+w") as fi:
                         urls:list = []
-                        # Pull urls from chrome window
+                        # Pull urls from open browser tabs and write them to file
                         for handle in driver.window_handles:
                             driver.switch_to.window(handle)
                             urls.append(driver.current_url)
                         fi.write("\n".join(urls))
-                        
+
+                    # Extract the data like we would by calling the "extract" command via CLI using the file that was just created.
                     await extract_urls(extract_file, False)
                     os.remove(file)
                 except Exception as e:
