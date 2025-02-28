@@ -102,11 +102,11 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
     artist = pixiv_img.user.account
     path, is_ai_art = set_path(artist)
     
-    # If art is tagged as AI but the -ai command wasn't used, add [AI] tag to file.
+    # Mark file as [AI] if tag was set or image is marked as AI on pixiv.
     def set_temp_tag_ai() -> str:
         if ' [AI]' in __meta_tags:
             return ""
-        if is_ai_art or 'AI-generated Illustration' in [tag.translated_name for tag in pixiv_img.tags]:
+        if is_ai_art or pixiv_img.illust_ai_type == 2:
             return " [AI]"
 
         return ""
