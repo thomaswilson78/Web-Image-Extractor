@@ -314,7 +314,7 @@ async def iqdb(file, browser:str):
                             dan_response = dan_api.get_posts({"tags":f"pixiv:{img_id}"})
                             if any(dan_response):
                                 driver.switch_to.new_window('tab')
-                                driver.get(f"https://danbooru.donmai.us/posts/{dan_response[0]["id"]}")
+                                driver.get(f"https://danbooru.donmai.us/posts/{dan_response[0]['id']}")
                             else:
                                 iqdb_lookup(pixiv_img.image_urls.medium)
                 case _:
