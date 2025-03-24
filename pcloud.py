@@ -64,8 +64,7 @@ artist_directories:dict[str:str] = set_artist_dir(__artist_path)
 ai_art_directories:set[str] = os.listdir(__ai_art_path) # These are named 1:1, don't need specific logic
 
 
-def set_path(artist):
-    is_ai_art = False
+def set_path(artist, is_ai_art):
     path = __default_path
     if artist != "":
         if artist in artist_directories:
@@ -77,12 +76,12 @@ def set_path(artist):
     return (path, is_ai_art)
 
 
-def save_pcloud(url, **kwargs):
+def save_pcloud(url, is_ai_art = False, **kwargs):
     artist = ""
     if "artist" in kwargs:
         artist = kwargs["artist"]
 
-    path, is_ai_art = set_path(artist)
+    path, is_ai_art = set_path(artist, is_ai_art)
     temp_tags = " [AI]" if is_ai_art and not ' [AI]' in __meta_tags else ""
     filename = __add_filename_tags(" - ".join(kwargs.values()), temp_tags)
     filepath = os.path.join(path, filename)

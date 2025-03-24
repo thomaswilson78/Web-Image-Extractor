@@ -10,6 +10,7 @@ from playsound import playsound
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import twscrape
+from twscrape.models import Tweet
 import pixivpy3
 import pixiv_auth
 import pcloud
@@ -42,6 +43,34 @@ def set_pixiv_refresh_token():
 
     return new_token
 
+
+def is_ai_generated_twitter(tw_response:Tweet) -> bool:
+    # This obviously won't catch everything, but should at least be enough to catch a decent quantity.
+    # Anyone that can't be easily caught can at least be added to the ai_artist.txt file.
+    
+    # If person is a known AI artist but doesn't use the criteria below, add them to the file.
+    if os.path.exists("./ai_artist.txt"):
+        users = [ x.replace("\n","") for x in open("./ai_artist.txt").readlines() ]
+        if tw_response.user.username in users:
+            return True
+
+    # Some users will have "@AIArt" or similar in their username    
+    if "aiart" in tw_response.user.displayname.lower():
+        return True
+    
+    # Checks if using the "#AIArt" hashtag
+    if "#aiart" in tw_response.rawContent.lower():
+        return True
+    
+    # Checks user bio to see if they have any AI keywords. Don't recommend using just "ai art" 
+    # as some legit artist might have "use in ai art is prohibited" or similar in their bio.
+    desc_keywords = [ "ComfyUI", "Stable Diffusion", "StableDiffusion", "AIイラスト", "AIillst", "Nijijourney", "NorvelAI" ]
+    desc = tw_response.user.rawDescription.lower()
+    for keyword in desc_keywords:
+        if keyword.lower() in desc:
+            return True
+
+    return False
 
 async def initialize_api_services(img_data):
     site_set = {site for site, _, _, _ in img_data}
@@ -134,10 +163,11 @@ def get_custom_id(url, idx):
     return url.split("%20")[idx]
 
 
-async def extract_images(img_data, is_ai_art):
+async def extract_images(img_data, all_ai_art):
     await initialize_api_services(img_data)
 
-    pcloud.set_tags(is_ai_art)
+    # If "all_ai_art" is true, then all extracted files will download and save with a "[AI]" tag at the end of the filename.
+    pcloud.set_tags(all_ai_art)
 
     no_errors = True
     pix_response = None
@@ -172,19 +202,22 @@ async def extract_images(img_data, is_ai_art):
                     print(f"Favorited {img_id}.")
                 case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
+                    is_ai_art:bool = False # all_ai_art will superseed this in importance
+                    if not all_ai_art:
+                        is_ai_art = is_ai_generated_twitter(tw_response)
                     for image in tw_response.media.photos:
                         # make sure image is at max possible resolution
                         url = image.url + "?name=4096x4096"
                         filename = image.url[image.url.rfind('/') + 1:]
-                        pcloud.save_pcloud(url, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
+                        pcloud.save_pcloud(url, is_ai_art, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
                     for video in tw_response.media.videos:
                         vid:twscrape.MediaVideoVariant = max(video.variants, key=attrgetter("bitrate"))
                         filename = vid.url[vid.url.rfind('/') + 1:vid.url.rfind('?')]
-                        pcloud.save_pcloud(vid.url, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
+                        pcloud.save_pcloud(vid.url, is_ai_art, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
                     for animation in tw_response.media.animated:
                         url = animation.videoUrl
                         filename = url[url.rfind('/') + 1:]
-                        pcloud.save_pcloud(url, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
+                        pcloud.save_pcloud(url, is_ai_art, artist=tw_response.user.username, img_id=str(img_id), filename=filename)
                 case "pixiv.net" | "www.pixiv.net":
                     pcloud.save_pcloud_pixiv(pixiv_api, pix_response.illust)
                 case _:
@@ -192,7 +225,7 @@ async def extract_images(img_data, is_ai_art):
                     if site in custom_filenames:
                         img_id = get_custom_id(url, custom_filenames[site])
                         filename = f"{img_id}{os.path.splitext(url)[1]}"
-                    pcloud.save_pcloud(url, site=site, filename=filename)
+                    pcloud.save_pcloud(url, is_ai_art=False, site=site, filename=filename)
 
         except Exception as e:
             print(f"{Fore.RED}{img_id}:{e}{Style.RESET_ALL}")
@@ -259,7 +292,7 @@ async def iqdb(file, browser:str):
                     continue
                 case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
-                    if "aiart" in tw_response.user.displayname.lower():
+                    if is_ai_generated_twitter(tw_response):
                         continue
                     
                     for image in tw_response.media.photos:
