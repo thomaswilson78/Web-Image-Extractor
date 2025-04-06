@@ -109,7 +109,7 @@ def __get_url_data(lines:list[str]):
     lines = [re.sub(r"^\d+\. ", "", li).replace("\n","").replace("www.", "") for li in lines]
 
     img_data = []
-    file_formats = [".jpg", ".jpeg", ".png", ".webm", ".jfif", ".gif", ".mp4", ".webm"]
+    file_formats = [".jpg", ".jpeg", ".png", ".webp", ".jfif", ".gif", ".mp4", ".webm"]
 
     for url in lines:
         parsed_url = urlparse.urlparse(url)
