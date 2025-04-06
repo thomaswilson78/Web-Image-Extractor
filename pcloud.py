@@ -99,20 +99,12 @@ def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
     # Pixiv is unfortunately bitchy and doesn't like images being pulled off their website, so the API has to do it.
     img_id = pixiv_img.id
     artist = pixiv_img.user.account
-    path, is_ai_art = set_path(artist)
+    path, is_ai_art = set_path(artist, pixiv_img.illust_ai_type == 2)
     
-    # Mark file as [AI] if tag was set or image is marked as AI on pixiv.
-    def set_temp_tag_ai() -> str:
-        if ' [AI]' in __meta_tags:
-            return ""
-        if is_ai_art or pixiv_img.illust_ai_type == 2:
-            return " [AI]"
-
-        return ""
-
     def extract_image(url):
         img_num = url[url.rfind("/") + 1:]
-        temp_tags = set_temp_tag_ai()
+        # Mark file as [AI] if tag was set or image is marked as AI on pixiv.
+        temp_tags =  " [AI]" if not " [AI]" in __meta_tags and is_ai_art else ""
         filename = __add_filename_tags(artist + " - " + str(img_id) + " - " + img_num, temp_tags)
         pixiv_api.download(url, path=path, name=filename)
         print(filename + " saved to " + path + filename)
