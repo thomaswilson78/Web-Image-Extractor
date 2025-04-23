@@ -6,3 +6,4 @@ Tests/*
 chromedriver
 chromedriver.exe
 .vs/*
+temp.txt
