@@ -72,6 +72,7 @@ def is_ai_generated_twitter(tw_response:Tweet) -> bool:
 
     return False
 
+
 async def initialize_api_services(img_data):
     site_set = {site for site, _, _, _ in img_data}
     if "pixiv.net" in site_set:
@@ -94,6 +95,7 @@ def __get_urls_from_file(file):
         raise Exception("Empty file.")
 
     return urls
+
 
 def __get_url_data(lines:list[str]):
     """Pulls urls and url related meta-data needed to extract files."""
@@ -234,6 +236,29 @@ async def extract_images(img_data, all_ai_art):
     return no_errors
 
 
+def allow_iqdb_tabs(urls:list) -> bool:
+    """If there are still tabs that have iqdb.org, ask user if they wish to continue or double check them."""
+    iqdb_match:bool = False
+    for url in urls:
+        if re.match(".*iqdb.org.*", url):
+            iqdb_match = True
+            break
+
+    # If there were, stop process to allow for double check.
+    if iqdb_match:
+        while True:
+            iqdb_val = '-' 
+            
+            iqdb_val = input(f"There are still iqdb.org urls open. Halt image extraction and check remaining iqdb image match(es)?[Y/n]: ").lower()
+            match iqdb_val:
+                case "y" | "":
+                    return False
+                case "n":
+                    return True
+                case _:
+                    print("Invalid input.")
+
+
 async def iqdb(file, browser:str):
     """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
     # Extract data from URLs
@@ -296,7 +321,7 @@ async def iqdb(file, browser:str):
                         continue
                     
                     for image in tw_response.media.photos:
-                        image_url = image.url + "?name=small" # Small should suffice and uses less bandwidth
+                        image_url = image.url + "?name=small" # Small should suffice and use less bandwidth
                         iqdb_lookup(image_url)
                 case "pixiv.net" | "www.pixiv.net":
                     pix_response = pixiv_api.illust_detail(img_id)
@@ -331,16 +356,21 @@ async def iqdb(file, browser:str):
         match input_val:
             case "y" | "":
                 try:
+                    urls:list = []
+                    # Pull urls from open browser tabs
+                    for handle in driver.window_handles:
+                        driver.switch_to.window(handle)
+                        urls.append(driver.current_url)
+
+                    # Allow user to recheck tabs if there are still iqdb ones that haven't been checked.
+                    if allow_iqdb_tabs(urls) == False:
+                        continue
+                        
                     # Create a temporary local file to save the urls to.
                     extract_file = f"{current_directory}/temp.txt"
                     if os.path.exists(extract_file):
                         os.remove(extract_file)
                     with open(extract_file, "+w") as fi:
-                        urls:list = []
-                        # Pull urls from open browser tabs and write them to file
-                        for handle in driver.window_handles:
-                            driver.switch_to.window(handle)
-                            urls.append(driver.current_url)
                         fi.write("\n".join(urls))
 
                     # Extract the data like we would by calling the "extract" command via CLI using the file that was just created.
