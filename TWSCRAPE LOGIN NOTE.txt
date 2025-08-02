@@ -1,0 +1,53 @@
+Anyway, so here's the deal:
+- Fuck logging in via the API. It doesn't work half the time and that was when it WAS working, now all I run into is IP bans, 404 errors, 403 errors, 400 errors, fuck, you name it, I get it. So the issue now seems to be that the "att" variable has been removed so twscrape shits the bed on that. I could just modify the code but fuck it, I don't care enough and it's easier to just edit the database once than search through a shit ton of code that isn't mine. Hopefully the dev gives half a shit and updates this so it'll work.
+- Add your login info for Twitter and the email associated with it. You probably don't even need to do the latter with the method I have in mind.
+- So my method is to manually extract the browser header and cookie manually. I don't bother with async shit because iqdb wouldn't mesh well with it anyway since you're limited to one search at a time and downloading is quick enough that it doesn't matter.
+
+
+First off you'll need a way to access sqlite databases. I use DB Browser for SQLite which is a nice and easy tool: https://sqlitebrowser.org/
+
+If there's no account.db file then you'll need to add an account first so that it can prefill in information. Easy way is to use my add-twitter-account which will ask for the twitter/x username/password and associated email/password. Note this won't log you in, nor do you want to for the above reasons.
+
+Once the file is created open it with DB Browser. There's only one table so you won't really need to do much, just go to the "Browse Data" tab. Make sure the make sure that "user_agent" is set to: Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1
+
+Also set "active" to "1".
+
+Now for the real meat and potatoes, open your web browser of choice and login to Twitter/X manually. Once logged in open up the page source via F12 and go to the "Network" tab.
+
+Inside there use the search filter and filter by "twitter". Find the "HomeTimeline?variables=..." and click on it to get the header and cookie information.
+
+You'll need to extract some of the information in here into json, which I have the way it should be structured below. Make sure you're in the "Headers" tab and extract the values from the related fields (NOTE: do NOT, and I mean NOT, change the user-agent field):
+
+{
+  "accept": "*/*",
+  "accept-encoding": "gzip, deflate, br, zstd",
+  "connection": "keep-alive",
+  "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+  "content-type": "application/json",
+  "authorization": "",
+  "x-twitter-active-user": "yes",
+  "x-twitter-client-language": "en",
+  "x-guest-token": "",
+  "x-csrf-token": "",
+  "x-twitter-auth-type": "OAuth2Session"
+}
+
+I kept most these prefilled, but make sure to double check them. For anything that doesn't have a value you'll need to grab those yourself from the corresponding field. For the record, "x-guest-token" will be "gt=..." found in the cookies area with the number following after being the value you need (though I don't think this matters).
+
+Next is the cookie. This is essentially a session hijack so twscrape won't need to login as you've already done so via your browser. Using the fields below, find the corresponding values and update the "..." with said value (leave off the stuff that already exists like v1% and ==\). You can also get these in the "Cookies" tab as well as the "Headers" tab, though the latter will have them clumped altogether, while the former won't allow you to expand the value column.
+
+{
+  "guest_id_marketing": "v1%...",
+  "guest_id_ads": "v1%...",
+  "personalization_id": "\"...==\"",
+  "guest_id": "v1%...",
+  "kdt": "...",
+  "twid": "\"u=...\"",
+  "ct0": "...",
+  "auth_token": "..."
+}
+
+
+After you've filled in the above, use a json minifier online to remove the fluff and copy them into their respective fields. Once done, write the changes to the database (or ctrl + s) and your done.
+
+Enjoy what really shouldn't have to be that much of a headache...
