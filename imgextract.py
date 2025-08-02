@@ -236,19 +236,26 @@ async def extract_images(img_data, all_ai_art):
     return no_errors
 
 
-def allow_iqdb_tabs(urls:list) -> bool:
+def allow_lookup_tabs(urls:list, method:str) -> bool:
     """If there are still tabs that have iqdb.org, ask user if they wish to continue or double check them."""
-    iqdb_match:bool = False
+    match_found:bool = False
+
+    method_match:str
+    match method:
+        case "iqdb":
+            method_match = ".*iqdb.org.*"
+        case "lens":
+            method_match = ".*google.com.*"
+
+
     for url in urls:
-        if re.match(".*iqdb.org.*", url):
-            iqdb_match = True
+        if re.match(method_match, url):
+            match_found = True
             break
 
     # If there were, stop process to allow for double check.
-    if iqdb_match:
+    if match_found:
         while True:
-            iqdb_val = '-' 
-            
             iqdb_val = input(f"There are still iqdb.org urls open. Halt image extraction and check remaining iqdb image match(es)?[Y/n]: ").lower()
             match iqdb_val:
                 case "y" | "":
@@ -257,9 +264,11 @@ def allow_iqdb_tabs(urls:list) -> bool:
                     return True
                 case _:
                     print("Invalid input.")
+            
+    return True
 
 
-async def iqdb(file, browser:str):
+async def lookup(file, browser:str, method:str):
     """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
     # Extract data from URLs
     img_data = __get_url_data(__get_urls_from_file(file))
@@ -306,12 +315,34 @@ async def iqdb(file, browser:str):
         url_text_box.send_keys(url)
         submit_button.click()
 
+    def google_lens_lookup(url):
+        driver.switch_to.new_window('tab')
+        driver.get(rf"https://lens.google.com/uploadbyurl?url={url}")
+
+        if re.match(r".*google.com\/sorry\/.*", driver.current_url):
+            while True:
+                input_val = input(f"Capcha solved?[Y/n]: ").lower() 
+                match input_val:
+                    case "y" | "":
+                        break
+                    case _:
+                        continue
+
+        #To not overwhelm servers as well as make traffic look less suspect to avoid being banned.
+        time.sleep(round(random.uniform(2.500, 4.300), 2))
+
+    match method:
+        case "iqdb":
+            lookup_method = iqdb_lookup
+        case "lens":
+            lookup_method = google_lens_lookup
+
     for site, _, img_id, url in img_data:
         try:
             if url != img_data[0][3]:
                 driver.switch_to.new_window('tab')
-            driver.get(url)
 
+            driver.get(url)
             match site:
                 case "danbooru.donmai.us":
                     continue
@@ -322,7 +353,7 @@ async def iqdb(file, browser:str):
                     
                     for image in tw_response.media.photos:
                         image_url = image.url + "?name=small" # Small should suffice and use less bandwidth
-                        iqdb_lookup(image_url)
+                        lookup_method(image_url)
                 case "pixiv.net" | "www.pixiv.net":
                     pix_response = pixiv_api.illust_detail(img_id)
                     if any(pix_response) and any(pix_response.illust):
@@ -333,7 +364,7 @@ async def iqdb(file, browser:str):
 
                         if any(pixiv_img.meta_pages): # Multi Image
                             for img in pixiv_img.meta_pages:
-                                iqdb_lookup(img.image_urls.medium)
+                                lookup_method(img.image_urls.medium)
                         else: # Single Image
                             # Try Danbooru first to save time. If we get a hit, open a tab for them instead.
                             dan_response = dan_api.get_posts({"tags":f"pixiv:{img_id}"})
@@ -341,9 +372,9 @@ async def iqdb(file, browser:str):
                                 driver.switch_to.new_window('tab')
                                 driver.get(f"https://danbooru.donmai.us/posts/{dan_response[0]['id']}")
                             else:
-                                iqdb_lookup(pixiv_img.image_urls.medium)
+                                lookup_method(pixiv_img.image_urls.medium)
                 case _:
-                    iqdb_lookup(url)
+                    lookup_method(url)
         except Exception as e:
             print(f"{site} - {img_id}: {e}")
 
@@ -363,7 +394,7 @@ async def iqdb(file, browser:str):
                         urls.append(driver.current_url)
 
                     # Allow user to recheck tabs if there are still iqdb ones that haven't been checked.
-                    if allow_iqdb_tabs(urls) == False:
+                    if allow_lookup_tabs(urls, method) == False:
                         continue
                         
                     # Create a temporary local file to save the urls to.

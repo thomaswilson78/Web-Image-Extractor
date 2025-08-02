@@ -46,15 +46,17 @@ async def extract(location, ai_art):
 @click.argument("file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
 @click.option("-b", "--browser", type=click.STRING, default="Firefox", 
               help="Specify browser to use. Options are Firefox (default) and Chrome.")
-async def iqdb(file, browser):
+@click.option("-m", "--method", type=click.STRING, default="iqdb", 
+              help="Website to use for lookup.")
+async def lookup(file, browser, method):
     """Check if iqdb can find image on imageboard sites."""
-    await imgextract.iqdb(file, browser)
+    await imgextract.lookup(file, browser, method)
 
 
 commands.add_command(extract)
 commands.add_command(add_twitter_account)
 commands.add_command(remove_twitter_account)
-commands.add_command(iqdb)
+commands.add_command(lookup)
 
 if __name__ == "__main__":
     commands()
