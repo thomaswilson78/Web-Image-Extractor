@@ -46,9 +46,9 @@ def set_pixiv_refresh_token():
 
 def is_ai_generated_twitter(tw_response:Tweet) -> bool:
     # This obviously won't catch everything, but should at least be enough to catch a decent quantity.
-    # Anyone that can't be easily caught can at least be added to the ai_artist.txt file.
+    # Anyone not caught can by the criteria below can be added to "ai_artist.txt" to filter them out.
     
-    # If person is a known AI artist but doesn't use the criteria below, add them to the file.
+    # Check list of known AI artist first
     if os.path.exists("./ai_artist.txt"):
         users = [ x.replace("\n","") for x in open("./ai_artist.txt").readlines() ]
         if tw_response.user.username in users:
@@ -99,8 +99,9 @@ def __get_urls_from_file(file):
 
 def __get_url_data(lines:list[str]):
     """Pulls urls and url related meta-data needed to extract files."""
-    # Ensures that URL is valid for image extraction by matching a keyword in the URL (i.e. Twitter -> "status", Danbooru -> "posts", etc.)
+
     def invalid_url(keyword:str):
+        """Ensures that URL is valid for image extraction by matching a keyword in the URL (i.e. Twitter -> "status", Danbooru -> "posts", etc.)"""
         if parsed_url.path.find(keyword) < 0:
             print(f"{Fore.YELLOW}URL is not valid: {url}{Style.RESET_ALL}")
             return True
@@ -137,7 +138,7 @@ def __get_url_data(lines:list[str]):
                 post_id = split_path[2][:split_path[2].find("?")+1] if split_path[2].find("?") > 0 else split_path[2]
                 img_data.append((parsed_url.hostname, "", post_id, url)) 
             case _:
-                # Don't bother with non-media urls
+                # Check if URL is a media element, if not, ignore URL.
                 if not any([url.endswith(format) for format in file_formats]):
                     print(f"{Fore.YELLOW}Url does not contain an image/video: {parsed_url.geturl()}{Style.RESET_ALL}")
                     continue
@@ -158,6 +159,8 @@ async def extract_urls(location, is_ai_art):
         if is_file and not IS_DEBUG:
             print("No issues encountered. Removing file...")
             os.remove(location)
+        elif IS_DEBUG:
+            print("DEBUG: File not deleted for debugging purposes.")
         print("Extraction complete.")
 
 
@@ -165,11 +168,11 @@ def get_custom_id(url, idx):
     return url.split("%20")[idx]
 
 
-async def extract_images(img_data, all_ai_art):
+async def extract_images(img_data, is_all_ai):
     await initialize_api_services(img_data)
 
-    # If "all_ai_art" is true, then all extracted files will download and save with a "[AI]" tag at the end of the filename.
-    pcloud.set_tags(all_ai_art)
+    # If "is_all_ai" is true, then all extracted files will download and save with a "[AI]" tag at the end of the filename.
+    pcloud.set_tags(is_all_ai)
 
     no_errors = True
     pix_response = None
@@ -204,9 +207,9 @@ async def extract_images(img_data, all_ai_art):
                     print(f"Favorited {img_id}.")
                 case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
-                    is_ai_art:bool = False # all_ai_art will superseed this in importance
-                    if not all_ai_art:
-                        is_ai_art = is_ai_generated_twitter(tw_response)
+                    # all_ai_art will superseed this in importance
+                    is_ai_art:bool = True if is_all_ai else is_ai_generated_twitter(tw_response)
+
                     for image in tw_response.media.photos:
                         # make sure image is at max possible resolution
                         url = image.url + "?name=4096x4096"
@@ -236,27 +239,20 @@ async def extract_images(img_data, all_ai_art):
     return no_errors
 
 
-def allow_lookup_tabs(urls:list, method:str) -> bool:
-    """If there are still tabs that have iqdb.org, ask user if they wish to continue or double check them."""
+def allow_lookup_tabs(urls:list) -> bool:
+    """If there are still tabs that have iqdb.org/google.com, ask user if they wish to continue or double check them."""
     match_found:bool = False
-
-    method_match:str
-    match method:
-        case "iqdb":
-            method_match = ".*iqdb.org.*"
-        case "lens":
-            method_match = ".*google.com.*"
-
+    lookup_methods = { ".*iqdb.org.*", ".*google.com.*" }
 
     for url in urls:
-        if re.match(method_match, url):
+        if re.match(rf"({"|".join(lookup_methods)})", url):
             match_found = True
             break
 
     # If there were, stop process to allow for double check.
     if match_found:
         while True:
-            iqdb_val = input(f"There are still iqdb.org urls open. Halt image extraction and check remaining iqdb image match(es)?[Y/n]: ").lower()
+            iqdb_val = input(f"There are still lookup tabs open. Halt image extraction and check remaining lookup image match(es)?[Y/n]: ").lower()
             match iqdb_val:
                 case "y" | "":
                     return False
@@ -267,16 +263,8 @@ def allow_lookup_tabs(urls:list, method:str) -> bool:
             
     return True
 
-
-async def lookup(file, browser:str, method:str):
-    """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
-    # Extract data from URLs
-    img_data = __get_url_data(__get_urls_from_file(file))
-    await initialize_api_services(img_data)
-
-    # Setup selenium to work with selected browser and install any extensions/add-ons
+def set_driver(browser):
     current_directory = os.getcwd()
-
     match browser.lower():
         case "chrome":
             driver_file = "chromedriver" + (".exe" if sys.platform == "win32" else "")
@@ -295,11 +283,38 @@ async def lookup(file, browser:str, method:str):
         case "firefox":
             driver = webdriver.Firefox(service=webdriver.FirefoxService())
             ext_path = f"{current_directory}/Extensions/Firefox/"
+
             for ext in os.listdir(ext_path):
                  driver.install_addon(path=rf"{ext_path}/{ext}")
         case _:
             raise Exception("Invalid browser defined.")
 
+    return driver
+
+
+async def lookup(file, browser:str, method:str):
+    """"Reads urls from file and searches via iqdb.org for a match. Utilizes selenium to pull file."""
+    # Extract data from URLs
+    img_data = __get_url_data(__get_urls_from_file(file))
+    await initialize_api_services(img_data)
+    
+    # If set to true then alternate to iqdb for Pixiv URLs as Google Lens cannot handle them.
+    allow_iqdb_pixiv:bool = False
+    if method == "lens" and any("pixiv" in site for site, _, _, _ in img_data):
+            while True:
+                input_val = input(f"It is unadvised to use Google Lens with Pixiv urls. Allow iqdb to search for Pixiv links?[Y/n]: ").lower() 
+                match input_val:
+                    case "y" | "":
+                        allow_iqdb_pixiv = True
+                        break
+                    case "n":
+                        break
+                    case _:
+                        print("Invalid entry.")
+                        continue
+
+    # Setup selenium to work with selected browser and install any extensions/add-ons
+    driver = set_driver(browser)
     driver.implicitly_wait(180)
 
     def iqdb_lookup(url):
@@ -316,20 +331,24 @@ async def lookup(file, browser:str, method:str):
         submit_button.click()
 
     def google_lens_lookup(url):
-        driver.switch_to.new_window('tab')
-        driver.get(rf"https://lens.google.com/uploadbyurl?url={url}")
+        if allow_iqdb_pixiv and "i.pximg.net" in url:
+            iqdb_lookup(url)
+        else:
+            driver.switch_to.new_window('tab')
+            driver.get(rf"https://lens.google.com/uploadbyurl?url={url}")
 
-        if re.match(r".*google.com\/sorry\/.*", driver.current_url):
-            while True:
-                input_val = input(f"Capcha solved?[Y/n]: ").lower() 
-                match input_val:
-                    case "y" | "":
-                        break
-                    case _:
-                        continue
+            # Check if there is a captcha, if so it needs to be solved before continuing.
+            if re.match(r".*google.com\/sorry\/.*", driver.current_url):
+                while True:
+                    input_val = input(f"Capcha solved?[Y/n]: ").lower() 
+                    match input_val:
+                        case "y" | "":
+                            break
+                        case _:
+                            continue
 
-        #To not overwhelm servers as well as make traffic look less suspect to avoid being banned.
-        time.sleep(round(random.uniform(2.500, 4.300), 2))
+            #To not overwhelm servers as well as make traffic look less suspect to avoid being banned.
+            time.sleep(round(random.uniform(2.500, 3.300), 2))
 
     match method:
         case "iqdb":
@@ -393,12 +412,12 @@ async def lookup(file, browser:str, method:str):
                         driver.switch_to.window(handle)
                         urls.append(driver.current_url)
 
-                    # Allow user to recheck tabs if there are still iqdb ones that haven't been checked.
-                    if allow_lookup_tabs(urls, method) == False:
+                    # If lookup tabs are still open, halt extraction.
+                    if allow_lookup_tabs(urls) == False:
                         continue
                         
-                    # Create a temporary local file to save the urls to.
-                    extract_file = f"{current_directory}/temp.txt"
+                    # Create a temporary local file to save the tab URLs to.
+                    extract_file = f"{os.getcwd()}/temp.txt"
                     if os.path.exists(extract_file):
                         os.remove(extract_file)
                     with open(extract_file, "+w") as fi:
@@ -406,11 +425,13 @@ async def lookup(file, browser:str, method:str):
 
                     # Extract the data like we would by calling the "extract" command via CLI using the file that was just created.
                     await extract_urls(extract_file, False)
-                    os.remove(file)
+                    if not IS_DEBUG:
+                        os.remove(file)
+                        print("File deleted.")
+                    else:
+                        print("DEBUG: File not deleted for debugging purposes.")
                 except Exception as e:
                     print(f"Error Occurred: {e}")
-
-                print("File deleted.")
                 break
             case "n":
                 break
