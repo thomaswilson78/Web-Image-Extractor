@@ -19,3 +19,4 @@ Metanol_040305
 NotSoftAlice
 silencesuzukaAI
 sirakomasumosu2
+mini_character
