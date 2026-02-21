@@ -130,7 +130,7 @@ def __get_url_data(lines:list[str]):
                     continue
                 # id @ 3: /{lang}/artworks/{illustration_id}
                 img_data.append((parsed_url.hostname, "", split_path[3], url)) 
-            case "danbooru.donmai.us" | "shima.donmai.us":
+            case "danbooru.donmai.us" | "shima.donmai.us" | "safebooru.donmai.us":
                 if invalid_url("/posts/"):
                     continue
                 # id @ 2: /post/{post_id}
@@ -179,7 +179,7 @@ async def extract_images(img_data, is_all_ai):
     for site, artist, img_id, url in img_data:
         try:
             # Danbooru only needs to add to favorites using the DanbooruAPI tool, all others will extract the image to save locally
-            if site not in {"danbooru.donmai.us", "shima.donmai.us"}:
+            if site not in {"danbooru.donmai.us", "shima.donmai.us", "safebooru.donmai.us"}:
                 if site == "pixiv.net":
                     pix_response = pixiv_api.illust_detail(img_id)
                     if any(pix_response) and any(pix_response.illust):
@@ -202,7 +202,7 @@ async def extract_images(img_data, is_all_ai):
                     continue
                     
             match site:
-                case "danbooru.donmai.us" | "shima.donmai.us":
+                case "danbooru.donmai.us" | "shima.donmai.us" | "safebooru.donmai.us":
                     dan_api.add_favorite(img_id)
                     print(f"Favorited {img_id}.")
                 case "twitter.com" | "x.com":
@@ -363,7 +363,7 @@ async def lookup(file, browser:str, method:str):
 
             driver.get(url)
             match site:
-                case "danbooru.donmai.us" | "shima.donmai.us":
+                case "danbooru.donmai.us" | "shima.donmai.us" | "safebooru.donmai.us":
                     continue
                 case "twitter.com" | "x.com":
                     tw_response = await twt_api.tweet_details(int(img_id))
