@@ -64,7 +64,18 @@ def is_ai_generated_twitter(tw_response:Tweet) -> bool:
     
     # Checks user bio to see if they have any AI keywords. Don't recommend using just "ai art" 
     # as some legit artist might have "use in ai art is prohibited" or similar in their bio.
-    desc_keywords = [ "ComfyUI", "Stable Diffusion", "StableDiffusion", "AIイラスト", "AIillst", "Nijijourney", "NorvelAI" ]
+    desc_keywords = [ 
+        "ComfyUI",
+        "Stable Diffusion",
+        "StableDiffusion",
+        "#AIArt",
+        "AI生成",
+        "AIイラスト",
+        "AIillst",
+        "AI illust",
+        "Nijijourney",
+        "NorvelAI"
+    ]
     desc = tw_response.user.rawDescription.lower()
     for keyword in desc_keywords:
         if keyword.lower() in desc:
