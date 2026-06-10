@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import requests
+import cloudscraper
 from pixivpy3 import AppPixivAPI
 
 __pcloud_path = ""
@@ -86,14 +87,26 @@ def save_pcloud(url, is_ai_art = False, **kwargs):
     filename = __add_filename_tags(" - ".join(kwargs.values()), temp_tags)
     filepath = os.path.join(path, filename)
 
-    r = requests.get(url)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
+    r = requests.get(url, headers=headers, stream=True)
+    if r.status_code != 200:
+        # If a standard request fails, try again with cloudscraper.
+        scraper = cloudscraper.create_scraper()
+
+        r = scraper.get(url)
+        if r.status_code != 200:
+            # If still failing, just report the error
+            raise Exception(rf"File not saved, returned status code: {r.status_code}")
+
     with open(filepath, 'wb') as outfile:
         outfile.write(r.content)
     values = [ value for _, value in kwargs.items()][0:2]
     __file_list[f"{' - '.join(values)}"] = filepath
 
     print(str(filename) + " saved to " + filepath)
-
 
 def save_pcloud_pixiv(pixiv_api:AppPixivAPI, pixiv_img):
     # Pixiv is unfortunately bitchy and doesn't like images being pulled off their website, so the API has to do it.
