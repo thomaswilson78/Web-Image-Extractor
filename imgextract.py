@@ -6,7 +6,7 @@ import re
 import random
 import urllib.parse as urlparse
 import time
-from playsound import playsound
+from playsound3 import playsound
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import twscrape
@@ -326,7 +326,7 @@ async def lookup(file, browser:str, method:str):
 
     # Setup selenium to work with selected browser and install any extensions/add-ons
     driver = set_driver(browser)
-    driver.implicitly_wait(180)
+    driver.implicitly_wait(30)
 
     def iqdb_lookup(url):
         driver.switch_to.new_window('tab')
